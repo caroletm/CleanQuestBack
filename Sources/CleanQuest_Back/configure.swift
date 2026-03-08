@@ -3,6 +3,7 @@ import Fluent
 import FluentMySQLDriver
 import Vapor
 import FluentSQL
+import JWT
 
 // configures your application
 public func configure(_ app: Application) async throws {
@@ -27,6 +28,24 @@ public func configure(_ app: Application) async throws {
     } else {
         print("⚠️ Le driver SQL n'est pas disponible (cast vers SQLDatabase impossible)")
     }
+    
+    enum JWTConfig {
+        static func signer() -> JWTSigner {
+            guard let secret = Environment.get("JWT_SECRET") else {
+                fatalError("JWT_SECRET is not set")
+            }
+            return JWTSigner.hs256(key: secret)
+        }
+    }
+    
+    let corsConfiguration = CORSMiddleware.Configuration(
+        allowedOrigin: .all,
+        allowedMethods: [.GET, .POST, .PUT, .DELETE, .OPTIONS],
+        allowedHeaders: [.accept, .authorization, .contentType, .origin],
+        cacheExpiration: 800
+    )
+
+    app.middleware.use(CORSMiddleware(configuration: corsConfiguration))
 
     // register routes
     try routes(app)
