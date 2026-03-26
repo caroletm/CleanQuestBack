@@ -21,6 +21,11 @@ final class Tache: Model, Content, @unchecked Sendable {
     @Field(key: "points") var points : Double
     @Field(key: "aFaireValider") var aFaireValider : Bool
     
+    @Children(for: \.$tache) var occurencesTache: [OccurenceTache]
+    
+    @Parent(key : "categorie_id") var categorie: CategorieTache
+    @Parent(key : "foyer_id") var foyer: Foyer
+    
     init() {
         self.id = UUID()
     }

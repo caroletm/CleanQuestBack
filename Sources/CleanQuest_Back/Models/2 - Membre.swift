@@ -13,7 +13,17 @@ final class Membre : Model, Content, @unchecked Sendable {
     
     @ID(key: .id) var id : UUID?
     @Field(key: "estGere") var estGere: Bool
-    @Timestamp(key: "dateEntree") var dateEntree: Date
+    @Timestamp(key: "dateEntree", on: .create) var dateEntree: Date?
+    
+    @OptionalParent(key: "user_id") var user: User?
+    @Parent(key: "gestionnaire_id") var gestionnaire: User
+    @Parent(key: "foyer_id") var foyer: Foyer
+    
+    @Children(for: \.$proprietaire) var utilisationsRecompenseProprietaire: [UtilisationRecompense]
+    @Children(for: \.$destinataire) var utilisationsRecompenseDestinataire: [UtilisationRecompense]
+    
+    @Children(for: \.$realisateur) var occurenceTacheRealisateur: [OccurenceTache]
+    @Children(for: \.$validateur) var occurenceTacheValidateur: [OccurenceTache]
     
     init() {
         self.id = UUID()

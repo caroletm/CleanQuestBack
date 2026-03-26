@@ -17,6 +17,10 @@ final class UtilisationRecompense : Model, Content, @unchecked Sendable {
     @Enum(key : "statutRecompense") var statutRecompense : StatutRecompense
     @Field(key: "deadline") var deadline : Date
     
+    @Parent(key: "proprietaire_id") var proprietaire: Membre
+    @Parent(key: "destinataire_id") var destinataire: Membre
+    @Parent(key: "recompense_id") var recompense: Recompense
+    
     init() {
         self.id = UUID()
         

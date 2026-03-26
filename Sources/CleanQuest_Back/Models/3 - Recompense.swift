@@ -20,6 +20,10 @@ final class Recompense : Model, Content, @unchecked Sendable {
     @Field(key: "descriptionEnCours") var descriptionEnCours: String
     @Field(key: "imageEnCours") var imageEnCours: String
     
+    @Children(for: \.$recompense) var utilisationsRecompense: [UtilisationRecompense]
+    
+    @Parent(key: "categorie_id") var categorie: CategorieRecompense
+    
     init() {
         self.id = UUID()
     }

@@ -14,6 +14,8 @@ final class CategorieRecompense : Model, Content, @unchecked Sendable {
     @ID(key: .id) var id: UUID?
     @Field(key: "nom") var nom: String
     
+    @Children(for: \.$categorie) var recompenses: [Recompense]
+    
     init() {
         self.id = UUID()
     }

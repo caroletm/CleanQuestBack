@@ -20,6 +20,9 @@ final class User : Model, Content, @unchecked Sendable {
     @Field(key: "cagnotte") var cagnotte : Double
     @Enum(key : "niveau") var niveau : Niveau
     
+    @Children(for : \.$user) var membres: [Membre]
+    @Children(for : \.$gestionnaire) var gestionnaires: [Membre]
+    
     init() {
         self.id = UUID()
     }

@@ -16,6 +16,10 @@ final class Foyer : Model, Content, @unchecked Sendable {
     @Enum(key: "type") var type: TypeFoyer
     @Field(key: "codeFoyer") var String: String
     
+    @Children(for: \.$foyer) var membres: [Membre]
+    @Children(for : \.$foyer) var taches: [Tache]
+    @Children(for: \.$foyer) var categoriesTache: [CategorieTache]
+    
     init() {
         self.id = UUID()
     }

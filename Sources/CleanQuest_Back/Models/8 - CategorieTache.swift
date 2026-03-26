@@ -9,10 +9,14 @@ import Vapor
 import Fluent
 
 final class CategorieTache : Model, Content, @unchecked Sendable {
-    static let schema = "categorie_taches"
+    static let schema = "categorie_tache"
     
     @ID(key: .id) var id : UUID?
     @Field(key: "nom") var nom : String
+    
+    @Children(for : \.$categorie) var taches: [Tache]
+    
+    @Parent(key: "foyer_id") var foyer: Foyer
     
     init() {
         self.id = UUID()

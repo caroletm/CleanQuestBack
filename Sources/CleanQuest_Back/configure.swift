@@ -18,7 +18,7 @@ public func configure(_ app: Application) async throws {
         database: Environment.get("DATABASE_NAME") ?? "CleanQuest"
     ), as: .mysql)
 
-    app.migrations.add(CreateTodo())
+//    app.migrations.add(CreateTodo())
     
     //Test rapide de connexion
     if let sql = app.db(.mysql) as? (any SQLDatabase) {
@@ -46,6 +46,25 @@ public func configure(_ app: Application) async throws {
     )
 
     app.middleware.use(CORSMiddleware(configuration: corsConfiguration))
+    
+    //MIGRATIONS
+    app.migrations.add(CreateUser())
+    app.migrations.add(CreateFoyer())
+    app.migrations.add(CreateMembre())
+    app.migrations.add(CreateRecompense())
+    app.migrations.add(CreateUtilisationRecompense())
+    app.migrations.add(CreateCategorieRecompense())
+    app.migrations.add(CreateTache())
+    app.migrations.add(CreateCategorieTache())
+    app.migrations.add(CreateOccurenceTache())
+    app.migrations.add(UpdateFKMembre())
+    app.migrations.add(UpdateFKRecompense())
+    app.migrations.add(UpdateFKUtilisationRecompense())
+    app.migrations.add(UpdateFKTache())
+    app.migrations.add(UpdateFKOcurrenceTache())
+    app.migrations.add(UpdateFKCategorieTache())
+    
+    try await app.autoMigrate()
 
     // register routes
     try routes(app)

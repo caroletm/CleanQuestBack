@@ -17,6 +17,10 @@ final class OccurenceTache : Model, Content, @unchecked Sendable {
     @Timestamp(key: "dateValidee", on: .update) var dateValidee : Date?
     @Field(key : "statut") var statut: StatutTache
     
+    @Parent(key: "realisateur_id") var realisateur: Membre
+    @Parent(key: "validateur_id") var validateur: Membre
+    @Parent(key: "tache_id") var tache: Tache
+    
     init() {
         self.id = UUID()
     }
