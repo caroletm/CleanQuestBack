@@ -24,10 +24,10 @@ struct CreateUser: AsyncMigration {
             .field("nom", .string, .required)
             .field("email", .string, .required).unique(on: "email")
             .field("motDePasse", .string, .required)
-            .field("couleur", .string, .required)
-            .field("avatar", .string, .required)
-            .field("cagnotte", .double, .required)
-            .field("niveau", Niveau, .required)
+            .field("couleur", .string)
+            .field("avatar", .string)
+            .field("cagnotte", .double, .required, .sql(.default(0.0)))
+            .field("niveau", Niveau, .required, .sql(.default("debutant")))
             .create()
     }
     

@@ -15,8 +15,8 @@ final class User : Model, Content, @unchecked Sendable {
     @Field(key: "nom") var nom: String
     @Field(key: "email") var email: String
     @Field(key: "motDePasse") var motDePasse: String
-    @Field(key: "couleur") var couleur: String
-    @Field(key: "avatar") var avatar: String
+    @OptionalField(key: "couleur") var couleur: String?
+    @OptionalField(key: "avatar") var avatar: String?
     @Field(key: "cagnotte") var cagnotte : Double
     @Enum(key : "niveau") var niveau : Niveau
     
@@ -27,7 +27,7 @@ final class User : Model, Content, @unchecked Sendable {
         self.id = UUID()
     }
     
-    init(id: UUID? = nil, nom : String, email : String, motDePasse : String, couleur : String, avatar : String, cagnotte : Double, niveau : Niveau) {
+    init(id: UUID? = nil, nom : String, email : String, motDePasse : String, couleur : String? = nil, avatar : String? = nil, cagnotte : Double = 0.0, niveau : Niveau = .debutant) {
         self.id = id ?? UUID()
         self.nom = nom
         self.email = email
