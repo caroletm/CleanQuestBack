@@ -17,6 +17,7 @@ struct UserDTO : Content {
     var id: UUID?
     var name: String
     var email: String
+    var firstConnection : Bool
 }
 
 struct UserUpdateDTO : Content {

@@ -47,7 +47,7 @@ func createUser(_ req: Request) async throws -> UserDTO {
     let user = User(
         nom: dto.name,
         email: dto.email,
-        motDePasse: hashedPassword
+        motDePasse: hashedPassword,
     )
 
     try await user.save(on: req.db)
@@ -58,7 +58,8 @@ func createUser(_ req: Request) async throws -> UserDTO {
     return UserDTO(
         id: id,
         name: user.nom,
-        email: user.email)
+        email: user.email,
+        firstConnection: true)
 }
 
 //POST/users/login
@@ -108,10 +109,15 @@ func profile(req: Request) async throws -> UserDTO {
         throw Abort(.internalServerError, reason: "ID de l'utilisateur manquant")
     }
     
+    let memberCount = try await Membre.query(on: req.db)
+        .filter(\.$user.$id == id)
+        .count()
+                    
     return UserDTO(
         id: id,
-        name : user.nom,
-        email: user.email)
+        name: user.nom,
+        email: user.email,
+        firstConnection: memberCount == 0)
 }
 
 //MARK: - GET USER
@@ -125,7 +131,8 @@ func getAllUsers(req: Request) async throws -> [UserDTO] {
         UserDTO(
             id: user.id,
             name: user.nom,
-            email: user.email)
+            email: user.email,
+            firstConnection: true)
     }
 }
 
@@ -138,7 +145,7 @@ func getUserById(req: Request) async throws -> UserDTO {
     guard let id = user.id else {
         throw Abort(.internalServerError, reason: "ID de l'utilisateur manquant")
     }
-    return UserDTO(id: id, name: user.nom, email: user.email)
+    return UserDTO(id: id, name: user.nom, email: user.email, firstConnection: true)
 }
 
 //MARK: - DELETE USER
@@ -181,5 +188,5 @@ func updateUserById(req: Request) async throws -> UserDTO {
     guard let userId = user.id else {
         throw Abort(.internalServerError, reason: "ID de l'utilisateur manquant")
     }
-    return UserDTO(id: userId, name: user.nom, email: user.email)
+    return UserDTO(id: userId, name: user.nom, email: user.email, firstConnection: true)
 }
