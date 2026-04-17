@@ -22,6 +22,7 @@ struct CreateMembre : AsyncMigration {
             .field("estGere", .bool, .required)
             .field("dateEntree", .datetime)
             .field("nom", .string, .required)
+            .field("email", .string)
             .field("couleur", .string)
             .field("avatar", .string)
             .field("cagnotte", .double, .required, .sql(.default(0.0)))

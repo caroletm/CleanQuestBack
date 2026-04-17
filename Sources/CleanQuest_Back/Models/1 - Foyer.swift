@@ -14,7 +14,7 @@ final class Foyer : Model, Content, @unchecked Sendable {
     @ID(key: .id) var id : UUID?
     @Field(key: "nom") var nom: String
     @Enum(key: "type") var type: TypeFoyer
-    @Field(key: "codeFoyer") var String: String
+    @Field(key: "codeFoyer") var codeFoyer: String
     
     @Children(for: \.$foyer) var membres: [Membre]
     @Children(for : \.$foyer) var taches: [Tache]
@@ -27,6 +27,6 @@ final class Foyer : Model, Content, @unchecked Sendable {
         self.id = UUID()
         self.nom = nom
         self.type = type
-        self.String = codeFoyer
+        self.codeFoyer = codeFoyer
     }
 }

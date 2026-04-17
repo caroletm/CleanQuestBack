@@ -47,6 +47,9 @@ public func configure(_ app: Application) async throws {
 
     app.middleware.use(CORSMiddleware(configuration: corsConfiguration))
     
+    let brevoAPIKey = Environment.get("BREVO_API_KEY") ?? ""
+    app.storage[BrevoAPIKey.self] = brevoAPIKey
+    
     //MIGRATIONS
     app.migrations.add(CreateUser())
     app.migrations.add(CreateFoyer())

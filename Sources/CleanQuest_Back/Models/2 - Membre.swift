@@ -15,6 +15,7 @@ final class Membre : Model, Content, @unchecked Sendable {
     @Field(key: "estGere") var estGere: Bool
     @Timestamp(key: "dateEntree", on: .create) var dateEntree: Date?
     @Field(key: "nom") var nom: String
+    @Field(key: "email") var email : String
     @OptionalField(key: "couleur") var couleur: String?
     @OptionalField(key: "avatar") var avatar: String?
     @Field(key: "cagnotte") var cagnotte: Double
@@ -34,11 +35,12 @@ final class Membre : Model, Content, @unchecked Sendable {
         self.id = UUID()
     }
 
-    init(id: UUID? = nil, estGere: Bool, dateEntree: Date, nom : String,  couleur: String? = nil, avatar: String? = nil, cagnotte: Double = 0.0, niveau: Niveau = .debutant) {
+    init(id: UUID? = nil, estGere: Bool, dateEntree: Date, nom : String, email: String, couleur: String? = nil, avatar: String? = nil, cagnotte: Double = 0.0, niveau: Niveau = .debutant) {
         self.id = id ?? UUID()
         self.estGere = estGere
         self.dateEntree = dateEntree
         self.nom = nom
+        self.email = email
         self.couleur = couleur
         self.avatar = avatar
         self.cagnotte = cagnotte
