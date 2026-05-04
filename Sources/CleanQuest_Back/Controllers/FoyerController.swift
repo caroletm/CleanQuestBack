@@ -12,9 +12,11 @@ import JWT
 struct FoyerController: RouteCollection {
     func boot(routes: any RoutesBuilder) throws {
         let foyers = routes.grouped("foyers")
+        
         let protected = foyers.grouped(JWTMiddleware())
         protected.post(use: createFoyer)
         protected.get(use: getAllFoyers)
+        protected.delete(":id", use: deleteFoyerById)
     }
     
     
@@ -101,7 +103,7 @@ struct FoyerController: RouteCollection {
         }
         
         return FoyerDTO(
-            nom: newFoyer.nom, type: newFoyer.type, codeFoyer: newFoyer.codeFoyer, membres: membresDTO)
+            id: newFoyer.id, nom: newFoyer.nom, type: newFoyer.type, codeFoyer: newFoyer.codeFoyer, membres: membresDTO)
         
     }
     
@@ -113,9 +115,14 @@ struct FoyerController: RouteCollection {
         let payload = try req.auth.require(UserPayload.self)
         let userId = payload.id
         
+        let membresFoyers = try await Membre.query(on: req.db)
+            .filter(\.$user.$id == userId)
+            .all()
+
+        let foyerIds = membresFoyers.compactMap { $0.$foyer.id }
+
         let foyers = try await Foyer.query(on: req.db)
-            .join(Membre.self, on: \Membre.$foyer.$id == \Foyer.$id)
-            .filter(Membre.self, \.$user.$id == userId)
+            .filter(\.$id ~~ foyerIds)
             .with(\.$membres)
             .all()
         
@@ -136,8 +143,28 @@ struct FoyerController: RouteCollection {
                     foyerId: m.$foyer.id
                 )
             }
-            return FoyerDTO(nom: foyer.nom, type: foyer.type, codeFoyer: foyer.codeFoyer, membres: membresDTO)
+            return FoyerDTO(id: foyer.id, nom: foyer.nom, type: foyer.type, codeFoyer: foyer.codeFoyer, membres: membresDTO)
         }
+    }
+    
+    //DELETE foyers/:id
+    //Supprime un foyer par l'id du foyer
+    @Sendable
+    func deleteFoyerById(_ req: Request) async throws -> Response {
+        
+        let payload = try req.auth.require(UserPayload.self)
+        let userId = payload.id
+    
+        guard let id = req.parameters.get("id", as: UUID.self) else {
+            throw Abort(.badRequest, reason: "ID invalide")
+        }
+    
+        guard let foyer = try await Foyer.find(id, on: req.db) else {
+            throw Abort(.notFound)
+        }
+        
+        try await foyer.delete(on: req.db)
+        return Response(status: .noContent)
     }
 
     

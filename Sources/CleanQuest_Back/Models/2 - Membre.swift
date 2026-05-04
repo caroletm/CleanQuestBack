@@ -22,7 +22,7 @@ final class Membre : Model, Content, @unchecked Sendable {
     @Enum(key: "niveau") var niveau: Niveau
 
     @OptionalParent(key: "user_id") var user: User?
-    @Parent(key: "gestionnaire_id") var gestionnaire: User
+    @OptionalParent(key: "gestionnaire_id") var gestionnaire: User?
     @Parent(key: "foyer_id") var foyer: Foyer
 
     @Children(for: \.$proprietaire) var utilisationsRecompenseProprietaire: [UtilisationRecompense]
