@@ -24,4 +24,5 @@ struct UserUpdateDTO : Content {
     var name: String?
     var email: String?
     var password: String?
+    var firstConnection: Bool?
 }

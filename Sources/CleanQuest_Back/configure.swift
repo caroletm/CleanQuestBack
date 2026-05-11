@@ -66,6 +66,7 @@ public func configure(_ app: Application) async throws {
     app.migrations.add(UpdateFKTache())
     app.migrations.add(UpdateFKOcurrenceTache())
     app.migrations.add(UpdateFKCategorieTache())
+    app.migrations.add(UpdateUser())
     
     try await app.autoMigrate()
 

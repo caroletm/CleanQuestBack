@@ -83,14 +83,17 @@ struct FoyerController: RouteCollection {
         }
         
         //ENVOI DES EMAILS
-        for membre in membresDTO.filter({$0.email != nil}) {
+        
+        for membre in membresDTO.filter({
+            $0.email != nil && !($0.email ?? "").isEmpty
+        }) {
             let html = """
             <h2>🧹 Bienvenue dans la communauté CleanQuest\n</h2>
             <p>Bonjour <strong>\(membre.nom)</strong>,</p>
             <p>Tu as été invité.e à rejoindre le foyer :</p>
             <p><strong>\(newFoyer.nom) </strong></p>
-            <p>Voici ton code pour rejoindre le foyer :</p>
-            <h3 style="color:#d40000;">\(newFoyer.codeFoyer)</h3>
+            <p>Voici le code pour rejoindre ton foyer :</p>
+            <h3 style="color:#B9BBF6;">\(newFoyer.codeFoyer)</h3>
             <p>🧽 Installe l'application avec cette adresse mail et entre ce code pour participer.</p>
             
             """
@@ -153,7 +156,7 @@ struct FoyerController: RouteCollection {
     func deleteFoyerById(_ req: Request) async throws -> Response {
         
         let payload = try req.auth.require(UserPayload.self)
-        let userId = payload.id
+        _ = payload.id
     
         guard let id = req.parameters.get("id", as: UUID.self) else {
             throw Abort(.badRequest, reason: "ID invalide")

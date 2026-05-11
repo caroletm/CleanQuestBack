@@ -48,6 +48,7 @@ func createUser(_ req: Request) async throws -> UserDTO {
         nom: dto.name,
         email: dto.email,
         motDePasse: hashedPassword,
+        onboarding: true
     )
 
     try await user.save(on: req.db)
@@ -132,7 +133,7 @@ func getAllUsers(req: Request) async throws -> [UserDTO] {
             id: user.id,
             name: user.nom,
             email: user.email,
-            firstConnection: true)
+            firstConnection: user.onboarding)
     }
 }
 
@@ -145,7 +146,7 @@ func getUserById(req: Request) async throws -> UserDTO {
     guard let id = user.id else {
         throw Abort(.internalServerError, reason: "ID de l'utilisateur manquant")
     }
-    return UserDTO(id: id, name: user.nom, email: user.email, firstConnection: true)
+    return UserDTO(id: id, name: user.nom, email: user.email, firstConnection: user.onboarding)
 }
 
 //MARK: - DELETE USER
@@ -182,11 +183,12 @@ func updateUserById(req: Request) async throws -> UserDTO {
         }
         user.motDePasse = try Bcrypt.hash(password)
     }
+    if let firstConnection = dto.firstConnection { user.onboarding = firstConnection}
 
     try await user.save(on: req.db)
  
     guard let userId = user.id else {
         throw Abort(.internalServerError, reason: "ID de l'utilisateur manquant")
     }
-    return UserDTO(id: userId, name: user.nom, email: user.email, firstConnection: true)
+    return UserDTO(id: userId, name: user.nom, email: user.email, firstConnection: user.onboarding)
 }

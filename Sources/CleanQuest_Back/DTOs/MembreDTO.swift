@@ -40,3 +40,13 @@ struct UpdateMembreDTO : Content {
     var cagnotte : Double?
     var niveau : Niveau?
 }
+
+struct MembreJoinDTO : Content {
+    var email: String
+    var codeFoyer: String
+}
+
+struct MembreJoinResponse: Content {
+    let membreId: UUID
+    let foyerId: UUID
+}
