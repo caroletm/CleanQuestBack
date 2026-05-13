@@ -16,7 +16,7 @@ struct MembreController: RouteCollection {
         protected.post("join", use: joinFoyer)
     }
     
-    // POST /membre/join
+    // POST /membres/join
     func joinFoyer(_ req: Request) async throws -> MembreJoinResponse {
         let payload = try req.auth.require(UserPayload.self)
         let userId = payload.id

@@ -9,7 +9,7 @@ import JWT
 public func configure(_ app: Application) async throws {
     // uncomment to serve files from /Public folder
     // app.middleware.use(FileMiddleware(publicDirectory: app.directory.publicDirectory))
-
+    
     app.databases.use(DatabaseConfigurationFactory.mysql(
         hostname: Environment.get("DATABASE_HOST") ?? "localhost",
         port: Environment.get("DATABASE_PORT").flatMap(Int.init(_:)) ?? 3306,
@@ -17,8 +17,8 @@ public func configure(_ app: Application) async throws {
         password: Environment.get("DATABASE_PASSWORD") ?? "",
         database: Environment.get("DATABASE_NAME") ?? "CleanQuest"
     ), as: .mysql)
-
-//    app.migrations.add(CreateTodo())
+    
+    //    app.migrations.add(CreateTodo())
     
     //Test rapide de connexion
     if let sql = app.db(.mysql) as? (any SQLDatabase) {
@@ -44,7 +44,7 @@ public func configure(_ app: Application) async throws {
         allowedHeaders: [.accept, .authorization, .contentType, .origin],
         cacheExpiration: 800
     )
-
+    
     app.middleware.use(CORSMiddleware(configuration: corsConfiguration))
     
     let brevoAPIKey = Environment.get("BREVO_API_KEY") ?? ""
@@ -60,6 +60,8 @@ public func configure(_ app: Application) async throws {
     app.migrations.add(CreateTache())
     app.migrations.add(CreateCategorieTache())
     app.migrations.add(CreateOccurenceTache())
+    app.migrations.add(CreateIcone())
+    app.migrations.add(SeedIcones())
     app.migrations.add(UpdateFKMembre())
     app.migrations.add(UpdateFKRecompense())
     app.migrations.add(UpdateFKUtilisationRecompense())
@@ -69,6 +71,20 @@ public func configure(_ app: Application) async throws {
     app.migrations.add(UpdateUser())
     
     try await app.autoMigrate()
+    
+    // Seed des catégories globales (disponibles pour tous les foyers)
+    let categoriesParDefaut = ["Salle de Bain / WC", "Cuisine", "Chambre", "Salon / Salle à manger", "Linge", "Sols", "Surfaces", "Vitres", "Extérieur", "Entretien", "Enfants", "Animaux", "Autres"]
+    
+    for nom in categoriesParDefaut {
+        let existe = try await CategorieTache.query(on: app.db)
+            .filter(\.$nom == nom)
+            .filter(\.$foyer.$id == nil)
+            .first()
+        if existe == nil {
+            let categorie = CategorieTache(nom: nom)
+            try await categorie.save(on: app.db)
+        }
+    }
 
     // register routes
     try routes(app)

@@ -16,7 +16,7 @@ final class CategorieTache : Model, Content, @unchecked Sendable {
     
     @Children(for : \.$categorie) var taches: [Tache]
     
-    @Parent(key: "foyer_id") var foyer: Foyer
+    @OptionalParent(key: "foyer_id") var foyer: Foyer?
     
     init() {
         self.id = UUID()

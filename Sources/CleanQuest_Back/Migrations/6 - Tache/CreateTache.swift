@@ -31,7 +31,6 @@ struct CreateTache : AsyncMigration {
         try await db.schema("taches")
             .id()
             .field("nom", .string, .required)
-            .field("icone", .string, .required)
             .field("dateCreation", .date)
             .field("frequence", FrequenceTache, .required)
             .field("duree", .int, .required)

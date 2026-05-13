@@ -12,9 +12,11 @@ struct UpdateFKTache: AsyncMigration {
     func prepare(on db: any Database) async throws {
         try await db.schema("taches")
             .field("categorie_id", .uuid,
-                .references("categorie_tache", "id", onDelete : .cascade))
+                .references("categorie_tache", "id", onDelete: .cascade))
             .field("foyer_id", .uuid,
-                   .references("foyers", "id", onDelete : .cascade))
+                   .references("foyers", "id", onDelete: .cascade))
+            .field("icone_id", .uuid,
+                   .references("icones", "id", onDelete: .setNull))
             .update()
     }
     
