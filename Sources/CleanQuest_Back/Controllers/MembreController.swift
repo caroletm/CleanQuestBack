@@ -54,5 +54,4 @@ struct MembreController: RouteCollection {
             foyerId: try foyer.requireID()
         )
     }
-
 }

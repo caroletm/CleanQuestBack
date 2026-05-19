@@ -11,6 +11,13 @@ enum Entrypoint {
         
         let app = try await Application.make(env)
 
+        if let workDir = ProcessInfo.processInfo.environment["VAPOR_WORKING_DIR"] {
+            print("✅ VAPOR_WORKING_DIR trouvé: \(workDir)")
+            app.directory.workingDirectory = workDir
+        } else {
+            print("❌ VAPOR_WORKING_DIR non défini")
+        }
+
         // This attempts to install NIO as the Swift Concurrency global executor.
         // You can enable it if you'd like to reduce the amount of context switching between NIO and Swift Concurrency.
         // Note: this has caused issues with some libraries that use `.wait()` and cleanly shutting down.

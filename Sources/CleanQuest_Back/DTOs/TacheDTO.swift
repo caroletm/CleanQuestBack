@@ -13,6 +13,12 @@ struct CategorieTacheDTO: Content {
     var foyer_id: UUID?
 }
 
+struct TacheTemplateDTO: Content {
+    var id: UUID?
+    var nom: String
+    var categorie_id: UUID
+}
+
 struct TacheCreateDTO: Content {
     var nom: String
     var icone_id: UUID

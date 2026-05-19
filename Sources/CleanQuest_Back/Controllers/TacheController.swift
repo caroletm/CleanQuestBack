@@ -16,7 +16,21 @@ struct TacheController: RouteCollection {
         protected.post("categorie", use: createCategorieTache)
         protected.get("categories", use: getCategories)
         protected.get("icones", use: getIcones)
+        protected.get("templates", use: getTemplates)
         protected.post(use: createTache)
+    }
+
+    // GET /taches/templates — liste les templates, filtrable par ?categorie_id=
+    @Sendable
+    func getTemplates(_ req: Request) async throws -> [TacheTemplateDTO] {
+        var query = TacheTemplate.query(on: req.db)
+        if let categorieId = req.query[UUID.self, at: "categorie_id"] {
+            query = query.filter(\.$categorie.$id == categorieId)
+        }
+        let templates = try await query.all()
+        return templates.map {
+            TacheTemplateDTO(id: $0.id, nom: $0.nom, categorie_id: $0.$categorie.id)
+        }
     }
 
     // POST /taches/categorie — crée une catégorie custom pour le foyer de l'utilisateur

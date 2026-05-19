@@ -7,8 +7,7 @@ import JWT
 
 // configures your application
 public func configure(_ app: Application) async throws {
-    // uncomment to serve files from /Public folder
-    // app.middleware.use(FileMiddleware(publicDirectory: app.directory.publicDirectory))
+
     
     app.databases.use(DatabaseConfigurationFactory.mysql(
         hostname: Environment.get("DATABASE_HOST") ?? "localhost",
@@ -45,12 +44,15 @@ public func configure(_ app: Application) async throws {
         cacheExpiration: 800
     )
     
+    
     app.middleware.use(CORSMiddleware(configuration: corsConfiguration))
+    
+    app.middleware.use(FileMiddleware(publicDirectory: app.directory.publicDirectory))
     
     let brevoAPIKey = Environment.get("BREVO_API_KEY") ?? ""
     app.storage[BrevoAPIKey.self] = brevoAPIKey
     
-    //MIGRATIONS
+    //MIGRATIONSet
     app.migrations.add(CreateUser())
     app.migrations.add(CreateFoyer())
     app.migrations.add(CreateMembre())
@@ -59,6 +61,7 @@ public func configure(_ app: Application) async throws {
     app.migrations.add(CreateCategorieRecompense())
     app.migrations.add(CreateTache())
     app.migrations.add(CreateCategorieTache())
+    
     app.migrations.add(CreateOccurenceTache())
     app.migrations.add(CreateIcone())
     app.migrations.add(SeedIcones())
@@ -69,22 +72,13 @@ public func configure(_ app: Application) async throws {
     app.migrations.add(UpdateFKOcurrenceTache())
     app.migrations.add(UpdateFKCategorieTache())
     app.migrations.add(UpdateUser())
-    
+    app.migrations.add(CreateTacheTemplate())
+
     try await app.autoMigrate()
     
-    // Seed des catégories globales (disponibles pour tous les foyers)
-    let categoriesParDefaut = ["Salle de Bain / WC", "Cuisine", "Chambre", "Salon / Salle à manger", "Linge", "Sols", "Surfaces", "Vitres", "Extérieur", "Entretien", "Enfants", "Animaux", "Autres"]
-    
-    for nom in categoriesParDefaut {
-        let existe = try await CategorieTache.query(on: app.db)
-            .filter(\.$nom == nom)
-            .filter(\.$foyer.$id == nil)
-            .first()
-        if existe == nil {
-            let categorie = CategorieTache(nom: nom)
-            try await categorie.save(on: app.db)
-        }
-    }
+    // Seeds
+    try await seedCategoriesTache(on: app.db)
+    try await seedTacheTemplates(on: app.db)
 
     // register routes
     try routes(app)
