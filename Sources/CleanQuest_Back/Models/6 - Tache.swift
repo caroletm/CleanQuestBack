@@ -17,7 +17,7 @@ final class Tache: Model, Content, @unchecked Sendable {
     @Timestamp(key: "dateCreation", on: .create) var dateCreation : Date?
     @Enum(key: "frequence") var frequence: FrequenceTache
     @Field(key: "duree") var duree : Int
-    @Enum(key: "difficulte") var difficulté : DifficulteTache
+    @Enum(key: "difficulte") var difficulte : DifficulteTache
     @Field(key: "points") var points : Double
     @Field(key: "aFaireValider") var aFaireValider : Bool
     
@@ -29,14 +29,14 @@ final class Tache: Model, Content, @unchecked Sendable {
     init() {
         self.id = UUID()
     }
-    init(id: UUID? = nil, nom: String, icone_id: UUID, dateCreation: Date? = nil, frequence: FrequenceTache, duree: Int, difficulté: DifficulteTache, points: Double, aFaireValider: Bool) {
+    init(id: UUID? = nil, nom: String, icone_id: UUID, dateCreation: Date? = nil, frequence: FrequenceTache, duree: Int, difficulte: DifficulteTache, points: Double, aFaireValider: Bool) {
         self.id = id ?? UUID()
         self.nom = nom
         self.$icone.id = icone_id
         self.dateCreation = dateCreation
         self.frequence = frequence
         self.duree = duree
-        self.difficulté = difficulté
+        self.difficulte = difficulte
         self.points = points
         self.aFaireValider = aFaireValider
     }

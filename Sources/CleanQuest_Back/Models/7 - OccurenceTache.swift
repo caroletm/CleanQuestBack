@@ -13,22 +13,34 @@ final class OccurenceTache : Model, Content, @unchecked Sendable {
     
     @ID(key: .id) var id: UUID?
     @Field(key: "datePlanifiee") var datePlanifiee: Date
-    @Timestamp(key: "dateRealisee", on: .update) var dateRealisee: Date?
-    @Timestamp(key: "dateValidee", on: .update) var dateValidee : Date?
-    @Field(key : "statut") var statut: StatutTache
+    @OptionalField(key: "dateRealisee") var dateRealisee: Date?
+    @OptionalField(key: "dateValidee") var dateValidee : Date?
+    @Enum(key : "statut") var statut: StatutTache
     
-    @Parent(key: "realisateur_id") var realisateur: Membre
-    @Parent(key: "validateur_id") var validateur: Membre
+    @OptionalParent(key: "realisateur_id") var realisateur: Membre?
+    @OptionalParent(key: "validateur_id") var validateur: Membre?
     @Parent(key: "tache_id") var tache: Tache
-    
+
     init() {
         self.id = UUID()
     }
-    init( id: UUID? = nil, datePlanifiee: Date, dateRealisee: Date? = nil, dateValidee: Date? = nil, statut: StatutTache) {
-        self.id = UUID()
+    init(
+        id: UUID? = nil,
+        datePlanifiee: Date,
+        dateRealisee: Date? = nil,
+        dateValidee: Date? = nil,
+        statut: StatutTache,
+        tacheId: UUID,
+        realisateurId: UUID? = nil,
+        validateurId: UUID? = nil
+    ) {
+        self.id = id ?? UUID()
         self.datePlanifiee = datePlanifiee
         self.dateRealisee = dateRealisee
         self.dateValidee = dateValidee
         self.statut = statut
+        self.$tache.id = tacheId
+        self.$realisateur.id = realisateurId
+        self.$validateur.id = validateurId
     }
 }

@@ -17,19 +17,76 @@ struct TacheController: RouteCollection {
         protected.get("categories", use: getCategories)
         protected.get("icones", use: getIcones)
         protected.get("templates", use: getTemplates)
+        protected.get("occurences", use: getOccurences)
         protected.post(use: createTache)
     }
 
-    // GET /taches/templates — liste les templates, filtrable par ?categorie_id=
+    // GET /taches/occurences — liste toutes les occurrences des tâches du foyer
+    @Sendable
+    func getOccurences(_ req: Request) async throws -> [OccurenceTacheDTO] {
+        let payload = try req.auth.require(UserPayload.self)
+
+        guard let membre = try await Membre.query(on: req.db)
+            .filter(\.$user.$id == payload.id)
+            .first() else {
+            throw Abort(.notFound, reason: "Membre introuvable")
+        }
+
+        let occurences = try await OccurenceTache.query(on: req.db)
+            .join(Tache.self, on: \OccurenceTache.$tache.$id == \Tache.$id)
+            .filter(Tache.self, \.$foyer.$id == membre.$foyer.id)
+            .with(\.$tache)
+            .all()
+
+        return try occurences.map { occ in
+            let tache = occ.tache
+            return OccurenceTacheDTO(
+                id: occ.id,
+                datePlanifiee: occ.datePlanifiee,
+                dateRealisee: occ.dateRealisee,
+                dateValidee: occ.dateValidee,
+                statut: occ.statut,
+                realisateur_id: occ.$realisateur.id,
+                validateur_id: occ.$validateur.id,
+                tache_id: try tache.requireID(),
+                tache_nom: tache.nom,
+                icone_id: tache.$icone.id,
+                categorie_id: tache.$categorie.id,
+                duree: tache.duree,
+                difficulte: tache.difficulte,
+                points: tache.points,
+                aFaireValider: tache.aFaireValider
+            )
+        }
+    }
+
+    // GET /taches/templates — liste les templates globaux + ceux du foyer, filtrable par ?categorie_id=
     @Sendable
     func getTemplates(_ req: Request) async throws -> [TacheTemplateDTO] {
+        let payload = try req.auth.require(UserPayload.self)
+
+        guard let membre = try await Membre.query(on: req.db)
+            .filter(\.$user.$id == payload.id)
+            .first() else {
+            throw Abort(.notFound, reason: "Membre introuvable")
+        }
+
         var query = TacheTemplate.query(on: req.db)
+            .group(.or) { group in
+                group.filter(\.$foyer.$id == nil)
+                group.filter(\.$foyer.$id == membre.$foyer.id)
+            }
         if let categorieId = req.query[UUID.self, at: "categorie_id"] {
             query = query.filter(\.$categorie.$id == categorieId)
         }
         let templates = try await query.all()
         return templates.map {
-            TacheTemplateDTO(id: $0.id, nom: $0.nom, categorie_id: $0.$categorie.id)
+            TacheTemplateDTO(
+                id: $0.id,
+                nom: $0.nom,
+                categorie_id: $0.$categorie.id,
+                foyer_id: $0.$foyer.id
+            )
         }
     }
 
@@ -86,9 +143,9 @@ struct TacheController: RouteCollection {
         return try await Icone.query(on: req.db).all()
     }
 
-    // POST /taches — crée une tâche assignée à une catégorie existante
+    // POST /taches — crée une tâche pour le foyer (catégorie et template créés à la volée si besoin)
     @Sendable
-    func createTache(_ req: Request) async throws -> Tache {
+    func createTache(_ req: Request) async throws -> TacheResponseDTO {
         let payload = try req.auth.require(UserPayload.self)
         let dto = try req.content.decode(TacheCreateDTO.self)
 
@@ -98,33 +155,93 @@ struct TacheController: RouteCollection {
             throw Abort(.notFound, reason: "Membre introuvable")
         }
 
-        guard let categorie = try await CategorieTache.find(dto.categorie_id, on: req.db) else {
-            throw Abort(.notFound, reason: "Catégorie introuvable")
-        }
-
-        // Sécurité : la catégorie doit être globale ou appartenir au bon foyer
-        if let foyerIdCategorie = categorie.$foyer.id,
-           foyerIdCategorie != membre.$foyer.id {
-            throw Abort(.forbidden, reason: "Cette catégorie n'appartient pas à votre foyer")
+        let nomTache = dto.nom.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !nomTache.isEmpty else {
+            throw Abort(.badRequest, reason: "Le nom de la tâche est obligatoire")
         }
 
         guard try await Icone.find(dto.icone_id, on: req.db) != nil else {
             throw Abort(.notFound, reason: "Icône introuvable")
         }
 
-        let tache = Tache(
-            nom: dto.nom,
-            icone_id: dto.icone_id,
-            frequence: dto.frequence,
-            duree: dto.duree,
-            difficulté: dto.difficulte,
-            points: dto.points,
-            aFaireValider: dto.aFaireValider
-        )
-        tache.$categorie.id = categorie.id!
-        tache.$foyer.id = membre.$foyer.id
+        // Transaction : si une étape échoue, rien n'est sauvegardé
+        return try await req.db.transaction { db in
 
-        try await tache.save(on: req.db)
-        return tache
+            // 1 - CATÉGORIE (existante ou créée à la volée avec l'UUID du front)
+            let categorie: CategorieTache
+            if let existing = try await CategorieTache.find(dto.categorie_id, on: db) {
+                if let foyerIdCategorie = existing.$foyer.id,
+                   foyerIdCategorie != membre.$foyer.id {
+                    throw Abort(.forbidden, reason: "Cette catégorie n'appartient pas à votre foyer")
+                }
+                categorie = existing
+            } else {
+                guard let nomCategorie = dto.categorie_nom?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !nomCategorie.isEmpty else {
+                    throw Abort(.badRequest, reason: "Le nom de la catégorie est obligatoire pour en créer une nouvelle")
+                }
+                let newCategorie = CategorieTache(id: dto.categorie_id, nom: nomCategorie)
+                newCategorie.$foyer.id = membre.$foyer.id
+                try await newCategorie.save(on: db)
+                categorie = newCategorie
+            }
+            let categorieId = try categorie.requireID()
+
+            // 2 - TACHE TEMPLATE (nom réutilisable) — créé si l'UUID du front n'existe pas encore
+            if let templateId = dto.tache_template_id {
+                if let existingTemplate = try await TacheTemplate.find(templateId, on: db) {
+                    if let foyerIdTemplate = existingTemplate.$foyer.id,
+                       foyerIdTemplate != membre.$foyer.id {
+                        throw Abort(.forbidden, reason: "Ce template n'appartient pas à votre foyer")
+                    }
+                } else {
+                    let newTemplate = TacheTemplate(
+                        id: templateId,
+                        nom: nomTache,
+                        categorieId: categorieId,
+                        foyerId: membre.$foyer.id
+                    )
+                    try await newTemplate.save(on: db)
+                }
+            }
+
+            // 3 - TACHE (instance concrète liée au foyer)
+            let tache = Tache(
+                id: dto.id,
+                nom: nomTache,
+                icone_id: dto.icone_id,
+                frequence: dto.frequence,
+                duree: dto.duree,
+                difficulte: dto.difficulte,
+                points: dto.points,
+                aFaireValider: dto.aFaireValider
+            )
+            tache.$categorie.id = categorieId
+            tache.$foyer.id = membre.$foyer.id
+
+            try await tache.save(on: db)
+
+            // 4 - OCCURENCE TACHE (1ère occurrence à l'échéance, non assignée)
+            let occurence = OccurenceTache(
+                datePlanifiee: dto.date_echeance,
+                statut: .aFaire,
+                tacheId: try tache.requireID()
+            )
+            try await occurence.save(on: db)
+
+            return TacheResponseDTO(
+                id: tache.id,
+                nom: tache.nom,
+                categorie_id: tache.$categorie.id,
+                foyer_id: tache.$foyer.id,
+                icone_id: tache.$icone.id,
+                frequence: tache.frequence,
+                duree: tache.duree,
+                difficulte: tache.difficulte,
+                points: tache.points,
+                aFaireValider: tache.aFaireValider,
+                dateCreation: tache.dateCreation
+            )
+        }
     }
 }

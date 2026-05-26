@@ -22,7 +22,7 @@ final class CategorieTache : Model, Content, @unchecked Sendable {
         self.id = UUID()
     }
     init(id: UUID? = nil, nom: String) {
-        self.id = UUID()
+        self.id = id ?? UUID()
         self.nom = nom
     }
 }
