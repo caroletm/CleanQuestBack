@@ -59,7 +59,7 @@ struct OccurenceTacheDTO: Content {
     var validateur_id: UUID?
     var tache_id: UUID
     var tache_nom: String
-    var icone_id: UUID
+    var icone_nomFichier: String
     var categorie_id: UUID
     var duree: Int
     var difficulte: DifficulteTache

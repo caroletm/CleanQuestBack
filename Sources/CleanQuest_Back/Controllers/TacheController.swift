@@ -35,7 +35,7 @@ struct TacheController: RouteCollection {
         let occurences = try await OccurenceTache.query(on: req.db)
             .join(Tache.self, on: \OccurenceTache.$tache.$id == \Tache.$id)
             .filter(Tache.self, \.$foyer.$id == membre.$foyer.id)
-            .with(\.$tache)
+            .with(\.$tache) { $0.with(\.$icone) }
             .all()
 
         return try occurences.map { occ in
@@ -50,7 +50,7 @@ struct TacheController: RouteCollection {
                 validateur_id: occ.$validateur.id,
                 tache_id: try tache.requireID(),
                 tache_nom: tache.nom,
-                icone_id: tache.$icone.id,
+                icone_nomFichier: tache.icone.nomFichier,
                 categorie_id: tache.$categorie.id,
                 duree: tache.duree,
                 difficulte: tache.difficulte,
