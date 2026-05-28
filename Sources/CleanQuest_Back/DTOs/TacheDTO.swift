@@ -61,6 +61,8 @@ struct OccurenceTacheDTO: Content {
     var tache_nom: String
     var icone_nomFichier: String
     var categorie_id: UUID
+    var categorie_nom: String
+    var frequence : FrequenceTache
     var duree: Int
     var difficulte: DifficulteTache
     var points: Double
