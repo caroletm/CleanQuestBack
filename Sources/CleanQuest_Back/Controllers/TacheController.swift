@@ -19,6 +19,9 @@ struct TacheController: RouteCollection {
         protected.get("templates", ":foyerId", use: getTemplates)
         protected.get("occurences", ":foyerId", use: getOccurences)
         protected.post(":foyerId", use: createTache)
+        protected.patch(":foyerId", ":tacheId", use: updateTache)
+        protected.patch("occurences", ":foyerId", ":occurenceId", use: updateOccurence)
+        protected.delete(":foyerId", ":tacheId", use: deleteTache)
     }
 
     // Récupère le foyerId de la route et vérifie que l'utilisateur y a accès (membre ou gestionnaire)
@@ -38,7 +41,6 @@ struct TacheController: RouteCollection {
         guard aAcces else {
             throw Abort(.forbidden, reason: "Vous n'avez pas accès à ce foyer.")
         }
-
         return foyerId
     }
 
@@ -219,13 +221,26 @@ struct TacheController: RouteCollection {
 
             try await tache.save(on: db)
 
-            // 4 - OCCURENCE TACHE (1ère occurrence à l'échéance, non assignée)
-            let occurence = OccurenceTache(
+            // 4 - OCCURRENCES — 1ère à l'échéance, puis fenêtre de 30 jours selon la fréquence
+            let premiereOccurence = OccurenceTache(
                 datePlanifiee: dto.date_echeance,
                 statut: .aFaire,
                 tacheId: try tache.requireID()
             )
-            try await occurence.save(on: db)
+            try await premiereOccurence.save(on: db)
+
+            let calendar = OccurrenceGenerator.calendrier()
+            let finFenetre = calendar.date(
+                byAdding: .day,
+                value: OccurrenceGenerator.fenetreJours,
+                to: dto.date_echeance
+            ) ?? dto.date_echeance
+            try await OccurrenceGenerator.genererOccurrences(
+                pour: tache,
+                ancre: dto.date_echeance,
+                jusqua: finFenetre,
+                on: db
+            )
 
             return TacheResponseDTO(
                 id: tache.id,
@@ -241,5 +256,196 @@ struct TacheController: RouteCollection {
                 dateCreation: tache.dateCreation
             )
         }
+    }
+
+    // PATCH /taches/:foyerId/:tacheId — modifie les champs de la tâche ; un changement de fréquence régénère les occurrences futures
+    @Sendable
+    func updateTache(_ req: Request) async throws -> TacheResponseDTO {
+        let payload = try req.auth.require(UserPayload.self)
+        let foyerId = try await foyerAutorise(req, userId: payload.id)
+
+        guard let tacheId = req.parameters.get("tacheId", as: UUID.self) else {
+            throw Abort(.badRequest, reason: "tacheId manquant ou invalide.")
+        }
+        guard let tache = try await Tache.find(tacheId, on: req.db) else {
+            throw Abort(.notFound, reason: "Tâche introuvable")
+        }
+        guard tache.$foyer.id == foyerId else {
+            throw Abort(.forbidden, reason: "Cette tâche n'appartient pas à votre foyer")
+        }
+
+        let dto = try req.content.decode(TacheUpdateDTO.self)
+        let ancienneFrequence = tache.frequence
+
+        if let nom = dto.nom {
+            let nomTrim = nom.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !nomTrim.isEmpty else {
+                throw Abort(.badRequest, reason: "Le nom de la tâche ne peut pas être vide")
+            }
+            tache.nom = nomTrim
+        }
+        if let iconeId = dto.icone_id {
+            guard try await Icone.find(iconeId, on: req.db) != nil else {
+                throw Abort(.notFound, reason: "Icône introuvable")
+            }
+            tache.$icone.id = iconeId
+        }
+        if let categorieId = dto.categorie_id {
+            guard let categorie = try await CategorieTache.find(categorieId, on: req.db) else {
+                throw Abort(.notFound, reason: "Catégorie introuvable")
+            }
+            if let foyerIdCategorie = categorie.$foyer.id, foyerIdCategorie != foyerId {
+                throw Abort(.forbidden, reason: "Cette catégorie n'appartient pas à votre foyer")
+            }
+            tache.$categorie.id = categorieId
+        }
+        if let frequence = dto.frequence { tache.frequence = frequence }
+        if let duree = dto.duree { tache.duree = duree }
+        if let difficulte = dto.difficulte { tache.difficulte = difficulte }
+        if let points = dto.points { tache.points = points }
+        if let aFaireValider = dto.aFaireValider { tache.aFaireValider = aFaireValider }
+
+        let frequenceChangee = dto.frequence != nil && dto.frequence != ancienneFrequence
+
+        try await req.db.transaction { db in
+            try await tache.save(on: db)
+
+            guard frequenceChangee else { return }
+
+            let maintenant = Date()
+
+            // Ancre = plus ancienne occurrence (approximation de l'échéance d'origine),
+            // capturée avant suppression pour garder la phase de la nouvelle série.
+            let ancre = try await OccurenceTache.query(on: db)
+                .filter(\.$tache.$id == tacheId)
+                .sort(\.$datePlanifiee, .ascending)
+                .first()?
+                .datePlanifiee ?? maintenant
+
+            // Supprime les occurrences futures encore "à faire" ; l'historique
+            // (passé + faites/validées) est préservé.
+            try await OccurenceTache.query(on: db)
+                .filter(\.$tache.$id == tacheId)
+                .filter(\.$datePlanifiee > maintenant)
+                .filter(\.$statut == .aFaire)
+                .delete()
+
+            // Régénère le futur selon la nouvelle fréquence.
+            let calendar = OccurrenceGenerator.calendrier()
+            let finFenetre = calendar.date(
+                byAdding: .day,
+                value: OccurrenceGenerator.fenetreJours,
+                to: maintenant
+            ) ?? maintenant
+            try await OccurrenceGenerator.genererOccurrences(
+                pour: tache,
+                ancre: ancre,
+                jusqua: finFenetre,
+                apartir: maintenant,
+                on: db
+            )
+        }
+
+        return TacheResponseDTO(
+            id: tache.id,
+            nom: tache.nom,
+            categorie_id: tache.$categorie.id,
+            foyer_id: tache.$foyer.id,
+            icone_id: tache.$icone.id,
+            frequence: tache.frequence,
+            duree: tache.duree,
+            difficulte: tache.difficulte,
+            points: tache.points,
+            aFaireValider: tache.aFaireValider,
+            dateCreation: tache.dateCreation
+        )
+    }
+
+    // PATCH /taches/occurences/:foyerId/:occurenceId — modifie une occurrence (échéance, statut, assignation)
+    @Sendable
+    func updateOccurence(_ req: Request) async throws -> OccurenceTacheDTO {
+        let payload = try req.auth.require(UserPayload.self)
+        let foyerId = try await foyerAutorise(req, userId: payload.id)
+
+        guard let occurenceId = req.parameters.get("occurenceId", as: UUID.self) else {
+            throw Abort(.badRequest, reason: "occurenceId manquant ou invalide.")
+        }
+        let occurenceQuery = OccurenceTache.query(on: req.db)
+            .filter(\.$id == occurenceId)
+            .with(\.$tache) { $0.with(\.$icone); $0.with(\.$categorie) }
+        guard let occurence = try await occurenceQuery.first() else {
+            throw Abort(.notFound, reason: "Occurrence introuvable")
+        }
+        guard occurence.tache.$foyer.id == foyerId else {
+            throw Abort(.forbidden, reason: "Cette occurrence n'appartient pas à votre foyer")
+        }
+
+        let dto = try req.content.decode(OccurenceTacheUpdateDTO.self)
+
+        if let datePlanifiee = dto.datePlanifiee { occurence.datePlanifiee = datePlanifiee }
+        if let statut = dto.statut { occurence.statut = statut }
+        if let realisateurId = dto.realisateur_id {
+            guard let membre = try await Membre.find(realisateurId, on: req.db),
+                  membre.$foyer.id == foyerId else {
+                throw Abort(.forbidden, reason: "Ce membre n'appartient pas à votre foyer")
+            }
+            occurence.$realisateur.id = realisateurId
+        }
+        if let validateurId = dto.validateur_id {
+            guard let membre = try await Membre.find(validateurId, on: req.db),
+                  membre.$foyer.id == foyerId else {
+                throw Abort(.forbidden, reason: "Ce membre n'appartient pas à votre foyer")
+            }
+            occurence.$validateur.id = validateurId
+        }
+
+        try await occurence.save(on: req.db)
+
+        let tache = occurence.tache
+        return OccurenceTacheDTO(
+            id: occurence.id,
+            datePlanifiee: occurence.datePlanifiee,
+            dateRealisee: occurence.dateRealisee,
+            dateValidee: occurence.dateValidee,
+            statut: occurence.statut,
+            realisateur_id: occurence.$realisateur.id,
+            validateur_id: occurence.$validateur.id,
+            tache_id: try tache.requireID(),
+            tache_nom: tache.nom,
+            icone_nomFichier: tache.icone.nomFichier,
+            categorie_id: tache.$categorie.id,
+            categorie_nom: tache.categorie.nom,
+            frequence: tache.frequence,
+            duree: tache.duree,
+            difficulte: tache.difficulte,
+            points: tache.points,
+            aFaireValider: tache.aFaireValider
+        )
+    }
+
+    // DELETE /taches/:foyerId/:tacheId — supprime la tâche et toutes ses occurrences
+    @Sendable
+    func deleteTache(_ req: Request) async throws -> HTTPStatus {
+        let payload = try req.auth.require(UserPayload.self)
+        let foyerId = try await foyerAutorise(req, userId: payload.id)
+
+        guard let tacheId = req.parameters.get("tacheId", as: UUID.self) else {
+            throw Abort(.badRequest, reason: "tacheId manquant ou invalide.")
+        }
+        guard let tache = try await Tache.find(tacheId, on: req.db) else {
+            throw Abort(.notFound, reason: "Tâche introuvable")
+        }
+        guard tache.$foyer.id == foyerId else {
+            throw Abort(.forbidden, reason: "Cette tâche n'appartient pas à votre foyer")
+        }
+
+        try await req.db.transaction { db in
+            try await OccurenceTache.query(on: db)
+                .filter(\.$tache.$id == tacheId)
+                .delete()
+            try await tache.delete(on: db)
+        }
+
+        return .noContent
     }
 }

@@ -35,6 +35,17 @@ struct TacheCreateDTO: Content {
     var date_echeance: Date
 }
 
+struct TacheUpdateDTO: Content {
+    var nom: String?
+    var categorie_id: UUID?
+    var icone_id: UUID?
+    var frequence: FrequenceTache?
+    var duree: Int?
+    var difficulte: DifficulteTache?
+    var points: Double?
+    var aFaireValider: Bool?
+}
+
 struct TacheResponseDTO: Content {
     var id: UUID?
     var nom: String
@@ -47,6 +58,13 @@ struct TacheResponseDTO: Content {
     var points: Double
     var aFaireValider: Bool
     var dateCreation: Date?
+}
+
+struct OccurenceTacheUpdateDTO: Content {
+    var datePlanifiee: Date?
+    var statut: StatutTache?
+    var realisateur_id: UUID?
+    var validateur_id: UUID?
 }
 
 struct OccurenceTacheDTO: Content {

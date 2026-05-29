@@ -70,6 +70,7 @@ public func configure(_ app: Application) async throws {
     app.migrations.add(UpdateFKUtilisationRecompense())
     app.migrations.add(UpdateFKTache())
     app.migrations.add(UpdateFKOcurrenceTache())
+    app.migrations.add(UpdateDatePlanifieeOccurenceTache())
     app.migrations.add(UpdateFKCategorieTache())
     app.migrations.add(UpdateUser())
     app.migrations.add(CreateTacheTemplate())
@@ -80,6 +81,9 @@ public func configure(_ app: Application) async throws {
     // Seeds
     try await seedCategoriesTache(on: app.db)
     try await seedTacheTemplates(on: app.db)
+
+    // register commands
+    app.asyncCommands.use(GenererOccurrencesCommand(), as: "generer-occurrences")
 
     // register routes
     try routes(app)
