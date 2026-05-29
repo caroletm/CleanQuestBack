@@ -13,28 +13,44 @@ struct TacheController: RouteCollection {
         let taches = routes.grouped("taches")
         let protected = taches.grouped(JWTMiddleware())
 
-        protected.post("categorie", use: createCategorieTache)
-        protected.get("categories", use: getCategories)
+        protected.post("categorie", ":foyerId", use: createCategorieTache)
+        protected.get("categories", ":foyerId", use: getCategories)
         protected.get("icones", use: getIcones)
-        protected.get("templates", use: getTemplates)
-        protected.get("occurences", use: getOccurences)
-        protected.post(use: createTache)
+        protected.get("templates", ":foyerId", use: getTemplates)
+        protected.get("occurences", ":foyerId", use: getOccurences)
+        protected.post(":foyerId", use: createTache)
     }
 
-    // GET /taches/occurences — liste toutes les occurrences des tâches du foyer
+    // Récupère le foyerId de la route et vérifie que l'utilisateur y a accès (membre ou gestionnaire)
+    private func foyerAutorise(_ req: Request, userId: UUID) async throws -> UUID {
+        guard let foyerId = req.parameters.get("foyerId", as: UUID.self) else {
+            throw Abort(.badRequest, reason: "foyerId manquant ou invalide.")
+        }
+
+        let aAcces = try await Membre.query(on: req.db)
+            .filter(\.$foyer.$id == foyerId)
+            .group(.or) { group in
+                group.filter(\.$user.$id == userId)
+                group.filter(\.$gestionnaire.$id == userId)
+            }
+            .first() != nil
+
+        guard aAcces else {
+            throw Abort(.forbidden, reason: "Vous n'avez pas accès à ce foyer.")
+        }
+
+        return foyerId
+    }
+
+    // GET /taches/occurences/:foyerId — liste toutes les occurrences des tâches du foyer
     @Sendable
     func getOccurences(_ req: Request) async throws -> [OccurenceTacheDTO] {
         let payload = try req.auth.require(UserPayload.self)
-
-        guard let membre = try await Membre.query(on: req.db)
-            .filter(\.$user.$id == payload.id)
-            .first() else {
-            throw Abort(.notFound, reason: "Membre introuvable")
-        }
+        let foyerId = try await foyerAutorise(req, userId: payload.id)
 
         let occurences = try await OccurenceTache.query(on: req.db)
             .join(Tache.self, on: \OccurenceTache.$tache.$id == \Tache.$id)
-            .filter(Tache.self, \.$foyer.$id == membre.$foyer.id)
+            .filter(Tache.self, \.$foyer.$id == foyerId)
             .with(\.$tache) { $0.with(\.$icone); $0.with(\.$categorie) }
             .all()
 
@@ -62,21 +78,16 @@ struct TacheController: RouteCollection {
         }
     }
 
-    // GET /taches/templates — liste les templates globaux + ceux du foyer, filtrable par ?categorie_id=
+    // GET /taches/templates/:foyerId — liste les templates globaux + ceux du foyer, filtrable par ?categorie_id=
     @Sendable
     func getTemplates(_ req: Request) async throws -> [TacheTemplateDTO] {
         let payload = try req.auth.require(UserPayload.self)
-
-        guard let membre = try await Membre.query(on: req.db)
-            .filter(\.$user.$id == payload.id)
-            .first() else {
-            throw Abort(.notFound, reason: "Membre introuvable")
-        }
+        let foyerId = try await foyerAutorise(req, userId: payload.id)
 
         var query = TacheTemplate.query(on: req.db)
             .group(.or) { group in
                 group.filter(\.$foyer.$id == nil)
-                group.filter(\.$foyer.$id == membre.$foyer.id)
+                group.filter(\.$foyer.$id == foyerId)
             }
         if let categorieId = req.query[UUID.self, at: "categorie_id"] {
             query = query.filter(\.$categorie.$id == categorieId)
@@ -92,20 +103,15 @@ struct TacheController: RouteCollection {
         }
     }
 
-    // POST /taches/categorie — crée une catégorie custom pour le foyer de l'utilisateur
+    // POST /taches/categorie/:foyerId — crée une catégorie custom pour le foyer
     @Sendable
     func createCategorieTache(_ req: Request) async throws -> CategorieTacheDTO {
         let payload = try req.auth.require(UserPayload.self)
+        let foyerId = try await foyerAutorise(req, userId: payload.id)
         let dto = try req.content.decode(CategorieTacheDTO.self)
 
-        guard let membre = try await Membre.query(on: req.db)
-            .filter(\.$user.$id == payload.id)
-            .first() else {
-            throw Abort(.notFound, reason: "Membre introuvable")
-        }
-
         let categorieTache = CategorieTache(nom: dto.nom)
-        categorieTache.$foyer.id = membre.$foyer.id
+        categorieTache.$foyer.id = foyerId
 
         try await categorieTache.save(on: req.db)
 
@@ -116,21 +122,16 @@ struct TacheController: RouteCollection {
         )
     }
 
-    // GET /taches/categories — liste les catégories globales + celles du foyer
+    // GET /taches/categories/:foyerId — liste les catégories globales + celles du foyer
     @Sendable
     func getCategories(_ req: Request) async throws -> [CategorieTacheDTO] {
         let payload = try req.auth.require(UserPayload.self)
-
-        guard let membre = try await Membre.query(on: req.db)
-            .filter(\.$user.$id == payload.id)
-            .first() else {
-            throw Abort(.notFound, reason: "Membre introuvable")
-        }
+        let foyerId = try await foyerAutorise(req, userId: payload.id)
 
         let categories = try await CategorieTache.query(on: req.db)
             .group(.or) { group in
                 group.filter(\.$foyer.$id == nil)
-                group.filter(\.$foyer.$id == membre.$foyer.id)
+                group.filter(\.$foyer.$id == foyerId)
             }
             .all()
 
@@ -145,17 +146,12 @@ struct TacheController: RouteCollection {
         return try await Icone.query(on: req.db).all()
     }
 
-    // POST /taches — crée une tâche pour le foyer (catégorie et template créés à la volée si besoin)
+    // POST /taches/:foyerId — crée une tâche pour le foyer (catégorie et template créés à la volée si besoin)
     @Sendable
     func createTache(_ req: Request) async throws -> TacheResponseDTO {
         let payload = try req.auth.require(UserPayload.self)
+        let foyerId = try await foyerAutorise(req, userId: payload.id)
         let dto = try req.content.decode(TacheCreateDTO.self)
-
-        guard let membre = try await Membre.query(on: req.db)
-            .filter(\.$user.$id == payload.id)
-            .first() else {
-            throw Abort(.notFound, reason: "Membre introuvable")
-        }
 
         let nomTache = dto.nom.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !nomTache.isEmpty else {
@@ -173,7 +169,7 @@ struct TacheController: RouteCollection {
             let categorie: CategorieTache
             if let existing = try await CategorieTache.find(dto.categorie_id, on: db) {
                 if let foyerIdCategorie = existing.$foyer.id,
-                   foyerIdCategorie != membre.$foyer.id {
+                   foyerIdCategorie != foyerId {
                     throw Abort(.forbidden, reason: "Cette catégorie n'appartient pas à votre foyer")
                 }
                 categorie = existing
@@ -183,7 +179,7 @@ struct TacheController: RouteCollection {
                     throw Abort(.badRequest, reason: "Le nom de la catégorie est obligatoire pour en créer une nouvelle")
                 }
                 let newCategorie = CategorieTache(id: dto.categorie_id, nom: nomCategorie)
-                newCategorie.$foyer.id = membre.$foyer.id
+                newCategorie.$foyer.id = foyerId
                 try await newCategorie.save(on: db)
                 categorie = newCategorie
             }
@@ -193,7 +189,7 @@ struct TacheController: RouteCollection {
             if let templateId = dto.tache_template_id {
                 if let existingTemplate = try await TacheTemplate.find(templateId, on: db) {
                     if let foyerIdTemplate = existingTemplate.$foyer.id,
-                       foyerIdTemplate != membre.$foyer.id {
+                       foyerIdTemplate != foyerId {
                         throw Abort(.forbidden, reason: "Ce template n'appartient pas à votre foyer")
                     }
                 } else {
@@ -201,7 +197,7 @@ struct TacheController: RouteCollection {
                         id: templateId,
                         nom: nomTache,
                         categorieId: categorieId,
-                        foyerId: membre.$foyer.id
+                        foyerId: foyerId
                     )
                     try await newTemplate.save(on: db)
                 }
@@ -219,7 +215,7 @@ struct TacheController: RouteCollection {
                 aFaireValider: dto.aFaireValider
             )
             tache.$categorie.id = categorieId
-            tache.$foyer.id = membre.$foyer.id
+            tache.$foyer.id = foyerId
 
             try await tache.save(on: db)
 

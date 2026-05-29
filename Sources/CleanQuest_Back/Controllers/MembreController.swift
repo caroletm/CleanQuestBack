@@ -14,7 +14,8 @@ struct MembreController: RouteCollection {
         let protected = membres.grouped(JWTMiddleware())
         
         protected.post("join", use: joinFoyer)
-        protected.get("foyer", use: getMembresByFoyer)
+        protected.get("foyer", ":foyerId", use: getMembresByFoyer)
+        protected.get("geres", ":foyerId", use: getMembresGeres)
     }
     
     // POST /membres/join
@@ -56,25 +57,28 @@ struct MembreController: RouteCollection {
         )
     }
     
-    //GET /membres/foyer
+    //GET /membres/foyer/:foyerId
     @Sendable
     func getMembresByFoyer(_ req: Request) async throws -> [MembreDTO] {
         let payload = try req.auth.require(UserPayload.self)
         let userId = payload.id
 
-        // Trouver le membre lié à l'utilisateur connecté pour récupérer son foyer
-        let membreUtilisateur = try await Membre.query(on: req.db)
+        guard let foyerId = req.parameters.get("foyerId", as: UUID.self) else {
+            throw Abort(.badRequest, reason: "foyerId manquant ou invalide.")
+        }
+
+        // Vérifier que l'utilisateur a accès à ce foyer (membre ou gestionnaire)
+        let aAcces = try await Membre.query(on: req.db)
+            .filter(\.$foyer.$id == foyerId)
             .group(.or) { group in
                 group.filter(\.$user.$id == userId)
                 group.filter(\.$gestionnaire.$id == userId)
             }
-            .first()
+            .first() != nil
 
-        guard let membreUtilisateur else {
-            throw Abort(.notFound, reason: "Aucun foyer associé à cet utilisateur.")
+        guard aAcces else {
+            throw Abort(.forbidden, reason: "Vous n'avez pas accès à ce foyer.")
         }
-
-        let foyerId = membreUtilisateur.$foyer.id
 
         // Récupérer tous les membres de ce foyer
         let membres = try await Membre.query(on: req.db)
@@ -94,22 +98,43 @@ struct MembreController: RouteCollection {
                 niveau: membre.niveau,
                 userId: membre.$user.id,
                 gestionnaireId: membre.$gestionnaire.id,
-                foyerId: foyerId
+                foyerId: membre.$foyer.id
             )
         }
     }
-    
+
+    //GET /membres/geres/:foyerId
     @Sendable
-    func getAllUsers(req: Request) async throws -> [UserDTO] {
-        let users: [User] = try await User.query(on: req.db).all()
-        
-        return users.map { user in
-            UserDTO(
-                id: user.id,
-                name: user.nom,
-                email: user.email,
-                firstConnection: user.onboarding)
+    func getMembresGeres(_ req: Request) async throws -> [MembreDTO] {
+        let payload = try req.auth.require(UserPayload.self)
+        let userId = payload.id
+
+        guard let foyerId = req.parameters.get("foyerId", as: UUID.self) else {
+            throw Abort(.badRequest, reason: "foyerId manquant ou invalide.")
+        }
+
+        // Uniquement les membres de ce foyer gérés par l'utilisateur connecté
+        let membres = try await Membre.query(on: req.db)
+            .filter(\.$foyer.$id == foyerId)
+            .filter(\.$gestionnaire.$id == userId)
+            .all()
+
+        return membres.map { membre in
+            MembreDTO(
+                id: membre.id,
+                estGere: membre.estGere,
+                dateEntree: membre.dateEntree,
+                nom: membre.nom,
+                email: membre.email,
+                couleur: membre.couleur,
+                avatar: membre.avatar,
+                cagnotte: membre.cagnotte,
+                niveau: membre.niveau,
+                userId: membre.$user.id,
+                gestionnaireId: membre.$gestionnaire.id,
+                foyerId: membre.$foyer.id
+            )
         }
     }
-    
+
 }
