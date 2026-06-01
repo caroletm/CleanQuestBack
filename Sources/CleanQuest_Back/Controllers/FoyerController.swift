@@ -107,7 +107,6 @@ struct FoyerController: RouteCollection {
         
         return FoyerDTO(
             id: newFoyer.id, nom: newFoyer.nom, type: newFoyer.type, codeFoyer: newFoyer.codeFoyer, membres: membresDTO)
-        
     }
     
     // GET /foyers
@@ -169,7 +168,6 @@ struct FoyerController: RouteCollection {
         try await foyer.delete(on: req.db)
         return Response(status: .noContent)
     }
-
     
 }
 extension String {

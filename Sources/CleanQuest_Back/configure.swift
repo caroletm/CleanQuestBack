@@ -8,7 +8,6 @@ import JWT
 // configures your application
 public func configure(_ app: Application) async throws {
 
-    
     app.databases.use(DatabaseConfigurationFactory.mysql(
         hostname: Environment.get("DATABASE_HOST") ?? "localhost",
         port: Environment.get("DATABASE_PORT").flatMap(Int.init(_:)) ?? 3306,
