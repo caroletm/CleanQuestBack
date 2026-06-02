@@ -60,11 +60,13 @@ struct TacheResponseDTO: Content {
     var dateCreation: Date?
 }
 
-struct OccurenceTacheUpdateDTO: Content {
-    var datePlanifiee: Date?
-    var statut: StatutTache?
-    var realisateur_id: UUID?
-    var validateur_id: UUID?
+struct OccurenceTacheValidationDTO: Content {
+    var realisateur_id: UUID
+    var validateur_id: UUID
+}
+
+struct OccurenceTacheRealisationDTO: Content {
+    var realisateur_id: UUID
 }
 
 struct OccurenceTacheDTO: Content {
