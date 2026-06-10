@@ -188,22 +188,31 @@ struct TacheController: RouteCollection {
             }
             let categorieId = try categorie.requireID()
 
-            // 2 - TACHE TEMPLATE (nom réutilisable) — créé si l'UUID du front n'existe pas encore
-            if let templateId = dto.tache_template_id {
-                if let existingTemplate = try await TacheTemplate.find(templateId, on: db) {
-                    if let foyerIdTemplate = existingTemplate.$foyer.id,
-                       foyerIdTemplate != foyerId {
-                        throw Abort(.forbidden, reason: "Ce template n'appartient pas à votre foyer")
-                    }
-                } else {
-                    let newTemplate = TacheTemplate(
-                        id: templateId,
-                        nom: nomTache,
-                        categorieId: categorieId,
-                        foyerId: foyerId
-                    )
-                    try await newTemplate.save(on: db)
+            // 2 - TACHE TEMPLATE (nom réutilisable) — réutilise ou crée à la volée
+            if let providedId = dto.tache_template_id,
+               let existingTemplate = try await TacheTemplate.find(providedId, on: db) {
+                // Cas 1 : front a fourni un ID qui existe → on vérifie le foyer
+                if let foyerIdTemplate = existingTemplate.$foyer.id,
+                   foyerIdTemplate != foyerId {
+                    throw Abort(.forbidden, reason: "Ce template n'appartient pas à votre foyer")
                 }
+                // rien à faire : on réutilise le template fourni
+            } else if let existingByName = try await TacheTemplate.query(on: db)
+                .filter(\.$foyer.$id == foyerId)
+                .filter(\.$nom == nomTache)
+                .filter(\.$categorie.$id == categorieId)
+                .first() {
+                // Cas 2 : un template avec le même nom existe déjà dans ce foyer → on le réutilise
+                _ = try existingByName.requireID()
+            } else {
+                // Cas 3 : pas trouvé → on crée
+                let newTemplate = TacheTemplate(
+                    id: dto.tache_template_id ?? UUID(),
+                    nom: nomTache,
+                    categorieId: categorieId,
+                    foyerId: foyerId
+                )
+                try await newTemplate.save(on: db)
             }
 
             // 3 - TACHE (instance concrète liée au foyer)
@@ -524,3 +533,4 @@ struct TacheController: RouteCollection {
         return .noContent
     }
 }
+
