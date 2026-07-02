@@ -22,6 +22,8 @@ struct TacheController: RouteCollection {
         protected.patch(":foyerId", ":tacheId", use: updateTache)
         protected.post("occurences", "valider-simple", ":foyerId", ":occurenceId", use: validerTacheSimple)
         protected.post("occurences", "declarer-realisee", ":foyerId", ":occurenceId", use: declarerTacheRealisee)
+        protected.post("occurences", "valider", ":foyerId", ":occurenceId", use: validerTache)
+        protected.post("occurences", "refuser", ":foyerId", ":occurenceId", use: refuserTache)
         protected.delete(":foyerId", ":tacheId", use: deleteTache)
     }
 
@@ -482,6 +484,138 @@ struct TacheController: RouteCollection {
         occurence.dateRealisee = Date()
         occurence.statut = .enAttenteDeValidation
         occurence.$realisateur.id = realisateurId
+
+        try await occurence.save(on: req.db)
+
+        let tache = occurence.tache
+        return OccurenceTacheDTO(
+            id: occurence.id,
+            datePlanifiee: occurence.datePlanifiee,
+            dateRealisee: occurence.dateRealisee,
+            dateValidee: occurence.dateValidee,
+            statut: occurence.statut,
+            realisateur_id: occurence.$realisateur.id,
+            validateur_id: occurence.$validateur.id,
+            tache_id: try tache.requireID(),
+            tache_nom: tache.nom,
+            icone_nomFichier: tache.icone.nomFichier,
+            categorie_id: tache.$categorie.id,
+            categorie_nom: tache.categorie.nom,
+            frequence: tache.frequence,
+            duree: tache.duree,
+            difficulte: tache.difficulte,
+            points: tache.points,
+            aFaireValider: tache.aFaireValider
+        )
+    }
+    
+    // POST /taches/occurences/valider/:foyerId/:occurenceId — valide une occurrence de tâche "à faire valider" (validation par un autre membre du foyer)
+    @Sendable
+    func validerTache(_ req: Request) async throws -> OccurenceTacheDTO {
+        let payload = try req.auth.require(UserPayload.self)
+        let foyerId = try await foyerAutorise(req, userId: payload.id)
+
+        guard let occurenceId = req.parameters.get("occurenceId", as: UUID.self) else {
+            throw Abort(.badRequest, reason: "occurenceId manquant ou invalide.")
+        }
+        let dto = try req.content.decode(OccurenceTacheValidationDTO.self)
+
+        let occurenceQuery = OccurenceTache.query(on: req.db)
+            .filter(\.$id == occurenceId)
+            .with(\.$tache) { $0.with(\.$icone); $0.with(\.$categorie) }
+        guard let occurence = try await occurenceQuery.first() else {
+            throw Abort(.notFound, reason: "Occurrence introuvable")
+        }
+        guard occurence.tache.$foyer.id == foyerId else {
+            throw Abort(.forbidden, reason: "Cette occurrence n'appartient pas à votre foyer")
+        }
+        guard occurence.tache.aFaireValider == true else {
+            throw Abort(.badRequest, reason: "Cette tâche ne nécessite pas de validation par un autre membre")
+        }
+
+        // Le réalisateur ne peut pas valider sa propre tâche
+        guard dto.validateur_id != dto.realisateur_id else {
+            throw Abort(.badRequest, reason: "Le réalisateur ne peut pas valider sa propre tâche")
+        }
+
+        guard let realisateur = try await Membre.find(dto.realisateur_id, on: req.db),
+              realisateur.$foyer.id == foyerId else {
+            throw Abort(.forbidden, reason: "Le réalisateur n'appartient pas à votre foyer")
+        }
+        let realisateurId = try realisateur.requireID()
+
+        guard let validateur = try await Membre.find(dto.validateur_id, on: req.db),
+              validateur.$foyer.id == foyerId else {
+            throw Abort(.forbidden, reason: "Le validateur n'appartient pas à votre foyer")
+        }
+        let validateurId = try validateur.requireID()
+
+        let maintenant = Date()
+        // La tâche a déjà été réalisée avant : on garde sa date de réalisation si elle existe
+        if occurence.dateRealisee == nil {
+            occurence.dateRealisee = maintenant
+        }
+        occurence.dateValidee = maintenant
+        occurence.statut = .validee
+        occurence.$realisateur.id = realisateurId
+        occurence.$validateur.id = validateurId
+
+        realisateur.cagnotte += occurence.tache.points
+
+        try await req.db.transaction { db in
+            try await occurence.save(on: db)
+            try await realisateur.save(on: db)
+        }
+
+        let tache = occurence.tache
+        return OccurenceTacheDTO(
+            id: occurence.id,
+            datePlanifiee: occurence.datePlanifiee,
+            dateRealisee: occurence.dateRealisee,
+            dateValidee: occurence.dateValidee,
+            statut: occurence.statut,
+            realisateur_id: occurence.$realisateur.id,
+            validateur_id: occurence.$validateur.id,
+            tache_id: try tache.requireID(),
+            tache_nom: tache.nom,
+            icone_nomFichier: tache.icone.nomFichier,
+            categorie_id: tache.$categorie.id,
+            categorie_nom: tache.categorie.nom,
+            frequence: tache.frequence,
+            duree: tache.duree,
+            difficulte: tache.difficulte,
+            points: tache.points,
+            aFaireValider: tache.aFaireValider
+        )
+    }
+    
+    // POST /taches/occurences/refuser/:foyerId/:occurenceId — refuse la validation : la tâche est marquée "non validée"
+    func refuserTache(_ req: Request) async throws -> OccurenceTacheDTO {
+        let payload = try req.auth.require(UserPayload.self)
+        let foyerId = try await foyerAutorise(req, userId: payload.id)
+
+        guard let occurenceId = req.parameters.get("occurenceId", as: UUID.self) else {
+            throw Abort(.badRequest, reason: "occurenceId manquant ou invalide.")
+        }
+
+        let occurenceQuery = OccurenceTache.query(on: req.db)
+            .filter(\.$id == occurenceId)
+            .with(\.$tache) { $0.with(\.$icone); $0.with(\.$categorie) }
+        guard let occurence = try await occurenceQuery.first() else {
+            throw Abort(.notFound, reason: "Occurrence introuvable")
+        }
+        guard occurence.tache.$foyer.id == foyerId else {
+            throw Abort(.forbidden, reason: "Cette occurrence n'appartient pas à votre foyer")
+        }
+        guard occurence.tache.aFaireValider == true else {
+            throw Abort(.badRequest, reason: "Cette tâche ne nécessite pas de validation")
+        }
+        guard occurence.statut == .enAttenteDeValidation || occurence.statut == .nonValidee else {
+            throw Abort(.badRequest, reason: "Cette tâche n'est pas en attente de validation")
+        }
+
+        // On GARDE le réalisateur et la date pour afficher qui l'avait faite.
+        occurence.statut = .nonValidee
 
         try await occurence.save(on: req.db)
 

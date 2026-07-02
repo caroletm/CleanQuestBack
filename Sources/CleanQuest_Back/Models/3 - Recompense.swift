@@ -18,21 +18,22 @@ final class Recompense : Model, Content, @unchecked Sendable {
     @Field(key: "descriptionLongue") var descriptionLongue: String
     @Field(key: "descriptionCourte") var descriptionCourte: String
     @Field(key: "descriptionEnCours") var descriptionEnCours: String
-    @Field(key: "imageEnCours") var imageEnCours: String
-    
+
     @Children(for: \.$recompense) var utilisationsRecompense: [UtilisationRecompense]
-    
+
     @Parent(key: "categorie_id") var categorie: CategorieRecompense
-    
+
     init() {
         self.id = UUID()
     }
-    init(id: UUID? = nil, nom: String, image: String, points: Double, descriptionLongue: String, descriptionCourte: String, descriptionEnCours: String, imageEnCours: String) {
-        self.id = UUID()
+    init(id: UUID? = nil, nom: String, image: String, points: Double, descriptionLongue: String, descriptionCourte: String, descriptionEnCours: String, categorieId: CategorieRecompense.IDValue) {
+        self.id = id ?? UUID()
         self.nom = nom
         self.image = image
         self.points = points
         self.descriptionLongue = descriptionLongue
         self.descriptionCourte = descriptionCourte
+        self.descriptionEnCours = descriptionEnCours
+        self.$categorie.id = categorieId
     }
 }

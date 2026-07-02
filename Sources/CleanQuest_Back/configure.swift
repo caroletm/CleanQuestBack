@@ -74,12 +74,16 @@ public func configure(_ app: Application) async throws {
     app.migrations.add(UpdateUser())
     app.migrations.add(CreateTacheTemplate())
     app.migrations.add(UpdateFKTacheTemplate())
+    app.migrations.add(UpdateDatesRealiseeValideeOccurenceTache())
+    app.migrations.add(RemoveImageEnCoursRecompense())
 
     try await app.autoMigrate()
-    
+
     // Seeds
     try await seedCategoriesTache(on: app.db)
     try await seedTacheTemplates(on: app.db)
+    try await seedCategoriesRecompense(on: app.db)
+    try await seedRecompenses(on: app.db)
 
     // register commands
     app.asyncCommands.use(GenererOccurrencesCommand(), as: "generer-occurrences")

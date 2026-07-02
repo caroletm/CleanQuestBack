@@ -1,0 +1,219 @@
+import Fluent
+
+func seedRecompenses(on db: any Database) async throws {
+
+    struct RecompenseSeed {
+        let nom: String
+        let categorie: String
+        let points: Double
+        let descriptionCourte: String
+        let descriptionLongue: String
+        let descriptionEnCours: String
+        let image: String
+    }
+
+    let recompenses: [RecompenseSeed] = [
+        RecompenseSeed(nom: "Chef du film", categorie: "privilege", points: 30,
+            descriptionCourte: "Choisis le film.",
+            descriptionLongue: "Tu choisis le film ou la série que tout le foyer regarde.",
+            descriptionEnCours: "Tu choisis le film de la soirée.",
+            image: "clapperboard_1424833.png"),
+        RecompenseSeed(nom: "DJ Officiel", categorie: "privilege", points: 20,
+            descriptionCourte: "Choisis la musique.",
+            descriptionLongue: "Tu contrôles la playlist de la maison pendant une heure.",
+            descriptionEnCours: "Tu es le DJ de la maison.",
+            image: "music_1930581.png"),
+        RecompenseSeed(nom: "Chef du repas", categorie: "privilege", points: 80,
+            descriptionCourte: "Choisis le menu.",
+            descriptionLongue: "Tu décides du repas du prochain déjeuner ou dîner.",
+            descriptionEnCours: "Tu choisis le repas.",
+            image: "bandeja-paisa_11590371.png"),
+        RecompenseSeed(nom: "Dessert Royal", categorie: "privilege", points: 40,
+            descriptionCourte: "Choisis le dessert.",
+            descriptionLongue: "Tu choisis le dessert du prochain repas.",
+            descriptionEnCours: "Tu choisis le dessert.",
+            image: "pudding_12009550.png"),
+        RecompenseSeed(nom: "Choix du jeu", categorie: "privilege", points: 30,
+            descriptionCourte: "Choisis le jeu.",
+            descriptionLongue: "Tu choisis le prochain jeu de société ou jeu vidéo.",
+            descriptionEnCours: "Tu choisis le jeu.",
+            image: "playing-cards_5558526.png"),
+        RecompenseSeed(nom: "Sortie VIP", categorie: "privilege", points: 150,
+            descriptionCourte: "Choisis la sortie.",
+            descriptionLongue: "Tu décides de la prochaine activité familiale.",
+            descriptionEnCours: "Tu choisis la sortie.",
+            image: "hiking_4516841.png"),
+        RecompenseSeed(nom: "Canapé VIP", categorie: "privilege", points: 40,
+            descriptionCourte: "La meilleure place.",
+            descriptionLongue: "La meilleure place du canapé est réservée pour toi.",
+            descriptionEnCours: "Tu profites de la meilleure place.",
+            image: "armchair_8033331.png"),
+        RecompenseSeed(nom: "Télécommande", categorie: "privilege", points: 40,
+            descriptionCourte: "Tu commandes la TV.",
+            descriptionLongue: "Tu gardes la télécommande toute la soirée.",
+            descriptionEnCours: "Tu contrôles la télévision.",
+            image: "remote-control_5870135.png"),
+        RecompenseSeed(nom: "Nuit Bonus", categorie: "privilege", points: 180,
+            descriptionCourte: "30 min de plus.",
+            descriptionLongue: "Tu peux te coucher 30 minutes plus tard (avec accord des parents).",
+            descriptionEnCours: "Tu profites de ta nuit bonus.",
+            image: "night_11251996.png"),
+        RecompenseSeed(nom: "Nuit calme", categorie: "privilege", points: 180,
+            descriptionCourte: "Le bébé fera sa nuit sans toi.",
+            descriptionLongue: "Tu ne te lèves pas cette nuit pour le bébé.",
+            descriptionEnCours: "Tu profites de ta nuit calme.",
+            image: "baby-sleep_14777620.png"),
+        RecompenseSeed(nom: "Grasse Matinée", categorie: "privilege", points: 220,
+            descriptionCourte: "Dors plus longtemps.",
+            descriptionLongue: "Tu profites d'une grasse matinée bien méritée.",
+            descriptionEnCours: "Tu profites de ta grasse matinée.",
+            image: "pillow_2107069.png"),
+        RecompenseSeed(nom: "Jour Pyjama", categorie: "privilege", points: 120,
+            descriptionCourte: "Reste en pyjama.",
+            descriptionLongue: "Profite d'une journée pyjama à la maison.",
+            descriptionEnCours: "Tu profites de ton jour pyjama.",
+            image: "pijama_2994668.png"),
+        RecompenseSeed(nom: "Chef du foyer", categorie: "privilege", points: 200,
+            descriptionCourte: "Tu décides.",
+            descriptionLongue: "Pendant une journée, tu prends les petites décisions du foyer.",
+            descriptionEnCours: "Tu es le chef du foyer.",
+            image: "crown_3483028.png"),
+        RecompenseSeed(nom: "Petit Déjeuner", categorie: "action", points: 160,
+            descriptionCourte: "Petit-déjeuner servi.",
+            descriptionLongue: "Un membre du foyer te prépare le petit-déjeuner.",
+            descriptionEnCours: "Ton petit-déjeuner est en préparation.",
+            image: "waffle_11615187.png"),
+        RecompenseSeed(nom: "Chocolat Chaud", categorie: "action", points: 40,
+            descriptionCourte: "Boisson préparée.",
+            descriptionLongue: "Quelqu'un te prépare un délicieux chocolat chaud.",
+            descriptionEnCours: "Ton chocolat chaud arrive.",
+            image: "chocolate_11590391.png"),
+        RecompenseSeed(nom: "Pop-corn Party", categorie: "action", points: 50,
+            descriptionCourte: "Pop-corn offert.",
+            descriptionLongue: "Quelqu'un prépare le pop-corn pour la soirée film.",
+            descriptionEnCours: "Le pop-corn est en préparation.",
+            image: "popcorn_848998.png"),
+        RecompenseSeed(nom: "Boisson Express", categorie: "action", points: 20,
+            descriptionCourte: "Boisson servie.",
+            descriptionLongue: "Quelqu'un t'apporte la boisson de ton choix.",
+            descriptionEnCours: "Ta boisson arrive.",
+            image: "orange-juice_571480.png"),
+        RecompenseSeed(nom: "Massage Flash", categorie: "action", points: 120,
+            descriptionCourte: "Massage 10 min.",
+            descriptionLongue: "Profite d'un massage de 10 minutes.",
+            descriptionEnCours: "Ton massage commence.",
+            image: "face-massage_11031252.png"),
+        RecompenseSeed(nom: "Lecture VIP", categorie: "action", points: 40,
+            descriptionCourte: "Une histoire.",
+            descriptionLongue: "Quelqu'un te lit une histoire ou un chapitre.",
+            descriptionEnCours: "La lecture commence.",
+            image: "braille_8457951.png"),
+        RecompenseSeed(nom: "Partie Bonus", categorie: "action", points: 60,
+            descriptionCourte: "On joue avec toi.",
+            descriptionLongue: "Un membre du foyer joue avec toi pendant 30 minutes.",
+            descriptionEnCours: "La partie commence.",
+            image: "controller_1975072.png"),
+        RecompenseSeed(nom: "Aide", categorie: "action", points: 100,
+            descriptionCourte: "Un coup de main.",
+            descriptionLongue: "Quelqu'un t'aide pour la tâche de ton choix pendant 20 minutes.",
+            descriptionEnCours: "L'aide commence.",
+            image: "team-building_12505249.png"),
+        RecompenseSeed(nom: "Coiffure Fun", categorie: "action", points: 50,
+            descriptionCourte: "Nouvelle coiffure.",
+            descriptionLongue: "Quelqu'un te fait une coiffure amusante.",
+            descriptionEnCours: "Ta coiffure est en préparation.",
+            image: "woman_7862627.png"),
+        RecompenseSeed(nom: "Dessin Cadeau", categorie: "action", points: 40,
+            descriptionCourte: "Un dessin rien que pour toi.",
+            descriptionLongue: "Un membre du foyer réalise un dessin personnalisé.",
+            descriptionEnCours: "Ton dessin est en création.",
+            image: "art_7439494.png"),
+        RecompenseSeed(nom: "Compliments", categorie: "action", points: 60,
+            descriptionCourte: "Une jolie carte.",
+            descriptionLongue: "Reçois une carte personnalisée remplie de compliments.",
+            descriptionEnCours: "Ta surprise est en préparation.",
+            image: "feedback_11511403.png"),
+        RecompenseSeed(nom: "Câlin XXL", categorie: "action", points: 20,
+            descriptionCourte: "Un gros câlin.",
+            descriptionLongue: "Profite d'un énorme câlin plein de bonne humeur.",
+            descriptionEnCours: "C'est l'heure du câlin.",
+            image: "heart_5641878.png"),
+        RecompenseSeed(nom: "Compliment Star", categorie: "action", points: 30,
+            descriptionCourte: "Compliments garantis.",
+            descriptionLongue: "La personne te dit une qualité qu'elle apprécie chez toi.",
+            descriptionEnCours: "Les compliments arrivent.",
+            image: "star_6024600.png"),
+        RecompenseSeed(nom: "Plateau Télé", categorie: "action", points: 140,
+            descriptionCourte: "Repas servi.",
+            descriptionLongue: "Quelqu'un prépare ton plateau repas pour la soirée film.",
+            descriptionEnCours: "Ton plateau est prêt.",
+            image: "romantic-dinner_9028307.png"),
+        RecompenseSeed(nom: "Pause Vaisselle", categorie: "action", points: 180,
+            descriptionCourte: "Une vaisselle offerte.",
+            descriptionLongue: "Quelqu'un fait exceptionnellement ton prochain tour de vaisselle.",
+            descriptionEnCours: "La vaisselle est prise en charge.",
+            image: "plate_8033362.png"),
+        RecompenseSeed(nom: "Aide Rangement", categorie: "action", points: 120,
+            descriptionCourte: "On t'aide à ranger.",
+            descriptionLongue: "Un membre du foyer t'aide à ranger pendant 20 minutes.",
+            descriptionEnCours: "L'aide au rangement commence.",
+            image: "powder_7040442.png"),
+        RecompenseSeed(nom: "Chef Pâtissier", categorie: "action", points: 180,
+            descriptionCourte: "Un gâteau maison.",
+            descriptionLongue: "Quelqu'un prépare une gourmandise maison pour le foyer.",
+            descriptionEnCours: "La gourmandise est en préparation.",
+            image: "cake_5976416.png"),
+        RecompenseSeed(nom: "Moment Ensemble", categorie: "action", points: 100,
+            descriptionCourte: "30 minutes ensemble.",
+            descriptionLongue: "Choisis une activité à partager avec un membre du foyer pendant 30 minutes.",
+            descriptionEnCours: "Votre moment commence.",
+            image: "pinwheel_6161246.png"),
+        RecompenseSeed(nom: "Danse Victory", categorie: "action", points: 40,
+            descriptionCourte: "Danse obligatoire.",
+            descriptionLongue: "Choisis quelqu'un qui doit faire une danse de la victoire pendant 30 secondes.",
+            descriptionEnCours: "Place à la danse !",
+            image: "pasodoble_11986338.png"),
+        RecompenseSeed(nom: "Champion", categorie: "privilege", points: 60,
+            descriptionCourte: "Ovation du foyer.",
+            descriptionLongue: "Tout le foyer te félicite et t'applaudit pour ton effort.",
+            descriptionEnCours: "Moment de gloire 🏆",
+            image: "trophy_6689184.png"),
+        RecompenseSeed(nom: "Merci Géant", categorie: "privilege", points: 50,
+            descriptionCourte: "Reconnaissance du foyer.",
+            descriptionLongue: "Chaque membre du foyer prend un moment pour te dire merci pour quelque chose que tu fais bien.",
+            descriptionEnCours: "On te dit merci 💛",
+            image: "thank-you_3158981.png"),
+    ]
+
+    // Cache des catégories pour éviter une requête par récompense
+    var categoriesParNom: [String: CategorieRecompense] = [:]
+
+    for seed in recompenses {
+        let categorie: CategorieRecompense
+        if let deja = categoriesParNom[seed.categorie] {
+            categorie = deja
+        } else {
+            guard let trouvee = try await CategorieRecompense.query(on: db)
+                .filter(\.$nom == seed.categorie)
+                .first()
+            else { continue }
+            categoriesParNom[seed.categorie] = trouvee
+            categorie = trouvee
+        }
+
+        let existe = try await Recompense.query(on: db)
+            .filter(\.$nom == seed.nom)
+            .first()
+        if existe == nil {
+            try await Recompense(
+                nom: seed.nom,
+                image: seed.image,
+                points: seed.points,
+                descriptionLongue: seed.descriptionLongue,
+                descriptionCourte: seed.descriptionCourte,
+                descriptionEnCours: seed.descriptionEnCours,
+                categorieId: categorie.id!
+            ).save(on: db)
+        }
+    }
+}

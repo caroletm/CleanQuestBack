@@ -14,5 +14,6 @@ func routes(_ app: Application) throws {
     try app.register(collection: FoyerController())
     try app.register(collection: MembreController())
     try app.register(collection: TacheController())
+    try app.register(collection: RecompenseController())
     
 }
