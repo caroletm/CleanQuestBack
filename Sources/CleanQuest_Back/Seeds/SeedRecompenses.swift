@@ -10,6 +10,7 @@ func seedRecompenses(on db: any Database) async throws {
         let descriptionLongue: String
         let descriptionEnCours: String
         let image: String
+        var dureeMinutes: Int = 1440 // 24h par défaut
     }
 
     let recompenses: [RecompenseSeed] = [
@@ -183,6 +184,11 @@ func seedRecompenses(on db: any Database) async throws {
             descriptionLongue: "Chaque membre du foyer prend un moment pour te dire merci pour quelque chose que tu fais bien.",
             descriptionEnCours: "On te dit merci 💛",
             image: "thank-you_3158981.png"),
+        RecompenseSeed(nom: "Majordome", categorie: "action", points: 250,
+            descriptionCourte: "Service Premium",
+            descriptionLongue: "Choisis un membre du foyer qui devient ton majordome pendant 24 heures et t'aide pour tes petites demandes du quotidien",
+            descriptionEnCours: "Ton majordome est à ton service",
+            image: "waiter_2766039.png"),
     ]
 
     // Cache des catégories pour éviter une requête par récompense
@@ -212,6 +218,7 @@ func seedRecompenses(on db: any Database) async throws {
                 descriptionLongue: seed.descriptionLongue,
                 descriptionCourte: seed.descriptionCourte,
                 descriptionEnCours: seed.descriptionEnCours,
+                dureeMinutes: seed.dureeMinutes,
                 categorieId: categorie.id!
             ).save(on: db)
         }

@@ -29,6 +29,7 @@ struct RecompenseController: RouteCollection {
                 descriptionCourte: r.descriptionCourte,
                 descriptionLongue: r.descriptionLongue,
                 descriptionEnCours: r.descriptionEnCours,
+                dureeMinutes: r.dureeMinutes,
                 categorie_id: r.$categorie.id,
                 categorie_nom: r.categorie.nom
             )

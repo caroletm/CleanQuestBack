@@ -15,6 +15,7 @@ struct RecompenseDTO: Content {
     var descriptionCourte: String
     var descriptionLongue: String
     var descriptionEnCours: String
+    var dureeMinutes: Int
     var categorie_id: UUID
     var categorie_nom: String
 }

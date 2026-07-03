@@ -76,6 +76,7 @@ public func configure(_ app: Application) async throws {
     app.migrations.add(UpdateFKTacheTemplate())
     app.migrations.add(UpdateDatesRealiseeValideeOccurenceTache())
     app.migrations.add(RemoveImageEnCoursRecompense())
+    app.migrations.add(AddDureeMinutesRecompense())
 
     try await app.autoMigrate()
 

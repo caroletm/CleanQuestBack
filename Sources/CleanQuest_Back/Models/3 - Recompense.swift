@@ -18,6 +18,7 @@ final class Recompense : Model, Content, @unchecked Sendable {
     @Field(key: "descriptionLongue") var descriptionLongue: String
     @Field(key: "descriptionCourte") var descriptionCourte: String
     @Field(key: "descriptionEnCours") var descriptionEnCours: String
+    @Field(key: "dureeMinutes") var dureeMinutes: Int
 
     @Children(for: \.$recompense) var utilisationsRecompense: [UtilisationRecompense]
 
@@ -26,7 +27,7 @@ final class Recompense : Model, Content, @unchecked Sendable {
     init() {
         self.id = UUID()
     }
-    init(id: UUID? = nil, nom: String, image: String, points: Double, descriptionLongue: String, descriptionCourte: String, descriptionEnCours: String, categorieId: CategorieRecompense.IDValue) {
+    init(id: UUID? = nil, nom: String, image: String, points: Double, descriptionLongue: String, descriptionCourte: String, descriptionEnCours: String, dureeMinutes: Int, categorieId: CategorieRecompense.IDValue) {
         self.id = id ?? UUID()
         self.nom = nom
         self.image = image
@@ -34,6 +35,7 @@ final class Recompense : Model, Content, @unchecked Sendable {
         self.descriptionLongue = descriptionLongue
         self.descriptionCourte = descriptionCourte
         self.descriptionEnCours = descriptionEnCours
+        self.dureeMinutes = dureeMinutes
         self.$categorie.id = categorieId
     }
 }
