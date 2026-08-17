@@ -22,6 +22,18 @@ enum OccurrenceGenerator {
         return calendar
     }
 
+    /// Fin de la fenêtre de génération à partir de `date`.
+    static func finFenetre(depuis date: Date) -> Date {
+        calendrier().date(byAdding: .day, value: fenetreJours, to: date) ?? date
+    }
+
+    /// Plancher à passer à `genererOccurrences` pour ne créer que le présent et
+    /// le futur. Positionné juste avant minuit pour que les occurrences du jour
+    /// même — y compris celles planifiées à 00:00 — soient bien générées.
+    static func plancherAujourdhui(_ maintenant: Date = Date()) -> Date {
+        calendrier().startOfDay(for: maintenant).addingTimeInterval(-1)
+    }
+
     /// Date suivante de la série, à partir de `date`.
     /// `index` = position dans la série depuis l'ancre (0 = ancre), nécessaire
     /// pour les patterns alternés (biHebdomadaire +3/+4).
@@ -94,8 +106,14 @@ enum OccurrenceGenerator {
                     statut: .aFaire,
                     tacheId: tacheId
                 )
-                try await occurence.save(on: db)
-                creees += 1
+                do {
+                    try await occurence.save(on: db)
+                    creees += 1
+                } catch let erreur as any DatabaseError where erreur.isConstraintFailure {
+                    // L'index unique (tache_id, datePlanifiee) a rejeté l'insertion :
+                    // une requête concurrente a déjà créé cette occurrence. C'est le
+                    // résultat voulu, on continue la série.
+                }
             }
             guard let suivante = dateSuivante(
                 apres: date,

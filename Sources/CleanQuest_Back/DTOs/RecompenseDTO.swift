@@ -19,3 +19,20 @@ struct RecompenseDTO: Content {
     var categorie_id: UUID
     var categorie_nom: String
 }
+
+struct UtilisationRecompenseCreateDTO : Content {
+    var proprietaire_id: UUID
+}
+
+struct UtilisationRecompenseResponseDTO : Content {
+    var id: UUID?
+    var statutRecompense: StatutRecompense
+    var dateAchat : Date?
+    var dateUtilisation : Date?
+    var deadline : Date?
+    var proprietaire_id: UUID
+    var destinataire_id: UUID?
+    var recompense : RecompenseDTO
+    var cagnotteProprietaire : Double
+}
+    

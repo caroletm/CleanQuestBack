@@ -25,6 +25,7 @@ struct TacheController: RouteCollection {
         protected.post("occurences", "valider", ":foyerId", ":occurenceId", use: validerTache)
         protected.post("occurences", "refuser", ":foyerId", ":occurenceId", use: refuserTache)
         protected.delete(":foyerId", ":tacheId", use: deleteTache)
+        protected.delete("templates", ":foyerId", ":templateId", use: deleteTemplate)
     }
 
     // Récupère le foyerId de la route et vérifie que l'utilisateur y a accès (membre ou gestionnaire)
@@ -47,11 +48,65 @@ struct TacheController: RouteCollection {
         return foyerId
     }
 
+    /// Prolonge la fenêtre glissante d'occurrences du foyer si elle ne couvre plus
+    /// les 30 prochains jours (génération paresseuse).
+    ///
+    /// Rien n'est planifié en dehors de l'usage : un foyer que personne n'ouvre ne
+    /// génère aucune écriture. Le plancher du jour empêche de recréer après coup
+    /// les occurrences d'une période d'inactivité — on ne fabrique pas du retard
+    /// qui n'a jamais existé.
+    private func prolongerFenetre(foyerId: UUID, on db: any Database) async throws {
+        let maintenant = Date()
+        let fin = OccurrenceGenerator.finFenetre(depuis: maintenant)
+        let plancher = OccurrenceGenerator.plancherAujourdhui(maintenant)
+
+        let taches = try await Tache.query(on: db)
+            .filter(\.$foyer.$id == foyerId)
+            .all()
+            .filter { $0.frequence != .unique }
+        guard !taches.isEmpty else { return }
+
+        // Bornes (première / dernière occurrence) par tâche, en une seule lecture.
+        // La première sert d'ancre pour garder la phase de la série, la dernière
+        // dit si la tâche a encore besoin d'être prolongée.
+        var bornes: [UUID: (premiere: Date, derniere: Date)] = [:]
+        let existantes = try await OccurenceTache.query(on: db)
+            .join(Tache.self, on: \OccurenceTache.$tache.$id == \Tache.$id)
+            .filter(Tache.self, \.$foyer.$id == foyerId)
+            .all()
+        for occ in existantes {
+            let tacheId = occ.$tache.id
+            let date = occ.datePlanifiee
+            if let borne = bornes[tacheId] {
+                bornes[tacheId] = (min(borne.premiere, date), max(borne.derniere, date))
+            } else {
+                bornes[tacheId] = (date, date)
+            }
+        }
+
+        for tache in taches {
+            let tacheId = try tache.requireID()
+            // Sans occurrence de référence, la phase de la série est inconnue :
+            // on ne peut rien prolonger.
+            guard let borne = bornes[tacheId], borne.derniere < fin else { continue }
+
+            try await OccurrenceGenerator.genererOccurrences(
+                pour: tache,
+                ancre: borne.premiere,
+                jusqua: fin,
+                apartir: plancher,
+                on: db
+            )
+        }
+    }
+
     // GET /taches/occurences/:foyerId — liste toutes les occurrences des tâches du foyer
     @Sendable
     func getOccurences(_ req: Request) async throws -> [OccurenceTacheDTO] {
         let payload = try req.auth.require(UserPayload.self)
         let foyerId = try await foyerAutorise(req, userId: payload.id)
+
+        try await prolongerFenetre(foyerId: foyerId, on: req.db)
 
         let occurences = try await OccurenceTache.query(on: req.db)
             .join(Tache.self, on: \OccurenceTache.$tache.$id == \Tache.$id)
@@ -241,16 +296,10 @@ struct TacheController: RouteCollection {
             )
             try await premiereOccurence.save(on: db)
 
-            let calendar = OccurrenceGenerator.calendrier()
-            let finFenetre = calendar.date(
-                byAdding: .day,
-                value: OccurrenceGenerator.fenetreJours,
-                to: dto.date_echeance
-            ) ?? dto.date_echeance
             try await OccurrenceGenerator.genererOccurrences(
                 pour: tache,
                 ancre: dto.date_echeance,
-                jusqua: finFenetre,
+                jusqua: OccurrenceGenerator.finFenetre(depuis: dto.date_echeance),
                 on: db
             )
 
@@ -344,16 +393,10 @@ struct TacheController: RouteCollection {
                 .delete()
 
             // Régénère le futur selon la nouvelle fréquence.
-            let calendar = OccurrenceGenerator.calendrier()
-            let finFenetre = calendar.date(
-                byAdding: .day,
-                value: OccurrenceGenerator.fenetreJours,
-                to: maintenant
-            ) ?? maintenant
             try await OccurrenceGenerator.genererOccurrences(
                 pour: tache,
                 ancre: ancre,
-                jusqua: finFenetre,
+                jusqua: OccurrenceGenerator.finFenetre(depuis: maintenant),
                 apartir: maintenant,
                 on: db
             )
@@ -664,6 +707,29 @@ struct TacheController: RouteCollection {
             try await tache.delete(on: db)
         }
 
+        return .noContent
+    }
+    
+    // DELETE /taches/templates/:foyerId/:templateId — supprime un template propre au foyer
+    @Sendable
+    func deleteTemplate(_ req: Request) async throws -> HTTPStatus {
+        let payload = try req.auth.require(UserPayload.self)
+        let foyerId = try await foyerAutorise(req, userId: payload.id)
+
+        guard let templateId = req.parameters.get("templateId", as: UUID.self) else {
+            throw Abort(.badRequest, reason: "templateId manquant ou invalide.")
+        }
+        guard let template = try await TacheTemplate.find(templateId, on: req.db) else {
+            throw Abort(.notFound, reason: "Template introuvable")
+        }
+        guard let foyerIdTemplate = template.$foyer.id else {
+            throw Abort(.forbidden, reason: "Ce template est commun à tous les foyers et ne peut pas être supprimé")
+        }
+        guard foyerIdTemplate == foyerId else {
+            throw Abort(.forbidden, reason: "Ce template n'appartient pas à votre foyer")
+        }
+
+        try await template.delete(on: req.db)
         return .noContent
     }
 }

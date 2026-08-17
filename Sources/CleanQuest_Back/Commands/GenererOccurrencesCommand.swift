@@ -2,11 +2,15 @@
 //  GenererOccurrencesCommand.swift
 //  CleanQuest_Back
 //
-//  Commande déclenchée une fois par jour par un cron système :
+//  Maintenance manuelle de la fenêtre glissante d'occurrences (30 jours en
+//  avant) pour toutes les tâches, tous foyers confondus :
 //      swift run CleanQuest_Back generer-occurrences
-//  Maintient la fenêtre glissante d'occurrences (30 jours en avant) pour
-//  toutes les tâches. La suppression des vieilles occurrences est gérée
-//  séparément par un script SQL planifié.
+//
+//  En fonctionnement normal cette commande est inutile : la fenêtre est
+//  prolongée à la lecture, foyer par foyer (voir TacheController.prolongerFenetre).
+//  Elle reste pratique pour rattraper l'ensemble de la base d'un coup.
+//  La suppression des vieilles occurrences est gérée séparément par un
+//  script SQL planifié.
 //
 
 import Vapor
@@ -21,13 +25,11 @@ struct GenererOccurrencesCommand: AsyncCommand {
 
     func run(using context: CommandContext, signature: Signature) async throws {
         let db = context.application.db
-        let calendar = OccurrenceGenerator.calendrier()
         let maintenant = Date()
-        let fin = calendar.date(
-            byAdding: .day,
-            value: OccurrenceGenerator.fenetreJours,
-            to: maintenant
-        ) ?? maintenant
+        let fin = OccurrenceGenerator.finFenetre(depuis: maintenant)
+        // Ne recrée jamais le passé : après une longue interruption, une tâche
+        // quotidienne fabriquerait sinon un mois entier d'occurrences en retard.
+        let plancher = OccurrenceGenerator.plancherAujourdhui(maintenant)
 
         let taches = try await Tache.query(on: db).all()
         var total = 0
@@ -49,6 +51,7 @@ struct GenererOccurrencesCommand: AsyncCommand {
                 pour: tache,
                 ancre: ancre,
                 jusqua: fin,
+                apartir: plancher,
                 on: db
             )
             total += creees
