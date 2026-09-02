@@ -35,4 +35,8 @@ struct UtilisationRecompenseResponseDTO : Content {
     var recompense : RecompenseDTO
     var cagnotteProprietaire : Double
 }
+
+struct AttributionRecompenseDTO  : Content {
+    var destinataire_id: UUID
+}
     

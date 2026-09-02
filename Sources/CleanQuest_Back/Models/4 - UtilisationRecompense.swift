@@ -33,3 +33,29 @@ final class UtilisationRecompense : Model, Content, @unchecked Sendable {
         self.$recompense.id = recompenseId
     }
 }
+
+extension UtilisationRecompense {
+    func toResponseDTO(cagnotteProprietaire: Double) -> UtilisationRecompenseResponseDTO {
+        let r = recompense
+        return UtilisationRecompenseResponseDTO(
+            id: id,
+            statutRecompense: statutRecompense,
+            dateAchat: dateAchat,
+            dateUtilisation: dateUtilisation,
+            deadline: deadline,
+            proprietaire_id: $proprietaire.id,
+            destinataire_id: $destinataire.id,
+            recompense: RecompenseDTO(
+                id: r.id,
+                nom: r.nom,
+                image: r.image,
+                points: r.points,
+                descriptionCourte: r.descriptionCourte,
+                descriptionLongue: r.descriptionLongue,
+                descriptionEnCours: r.descriptionEnCours,
+                dureeMinutes: r.dureeMinutes,
+                categorie_id: r.$categorie.id,
+                categorie_nom: r.categorie.nom),
+            cagnotteProprietaire: cagnotteProprietaire)
+    }
+}

@@ -15,6 +15,15 @@ struct RecompenseController: RouteCollection {
         
         protected.get(use: getRecompenses)
         protected.post("acheter",":foyerId", ":recompenseId",use: acheterRecompense)
+        protected.get("mes-recompenses",":foyerId", ":membreId", use: getRecompensesAchetes)
+        protected.post("utiliser", ":foyerId", ":utilisationId", use: utiliserRecompense)
+        protected.post("valider", ":foyerId", ":utilisationId", use: validerUtilisation)
+        protected.post("refuser", ":foyerId", ":utilisationId", use: refuserUtilisation)
+        protected.post("attribuer", ":foyerId", ":utilisationId", use: attribuerRecompense)
+        protected.get("mes-missions", ":foyerId", ":membreId", use: getMesMissions)
+        protected.get("en-cours", ":foyerId", use: getRecompensesEnCours)
+        protected.post("accepter", ":foyerId", ":utilisationId", use: accepterMission)
+        protected.post("decliner", ":foyerId", ":utilisationId", use: declinerMission)
     }
     
     // GET /recompenses — catalogue global
@@ -35,6 +44,30 @@ struct RecompenseController: RouteCollection {
                 categorie_nom: r.categorie.nom
             )
         }
+    }
+    
+    // GET /recompenses/mes-recompenses/:foyerId/:membreId — portefeuille d'un membre
+    @Sendable
+    func getRecompensesAchetes(_ req: Request) async throws -> [UtilisationRecompenseResponseDTO] {
+        let payload = try req.auth.require(UserPayload.self)
+        let foyerId = try await foyerAutorise(req, userId: payload.id)
+        
+        guard let membreId = req.parameters.get("membreId", as: UUID.self) else {
+            throw Abort(.badRequest, reason: "membre Id mamnquant ou invalide")
+        }
+        guard let membre = try await Membre.find(membreId, on: req.db),
+              membre.$foyer.id == foyerId,
+              membre.$user.id == payload.id || membre.$gestionnaire.id == payload.id else {
+            throw Abort(.forbidden, reason: "Vous ne pouvez consulter que vos récompenses ou celles du membre que vous gérez")
+        }
+        let utilisations = try await UtilisationRecompense.query(on: req.db)
+            .filter(\.$proprietaire.$id == membreId)
+            .filter(\.$statutRecompense ~~ [.achetee, .attribuee, .enCours])
+            .with(\.$recompense) { recompense in
+                recompense.with(\.$categorie)
+            }.all()
+        
+        return utilisations.map { $0.toResponseDTO(cagnotteProprietaire: membre.cagnotte) }
     }
     
     // POST /recompenses/:foyerId/:recompenseId
@@ -111,12 +144,287 @@ struct RecompenseController: RouteCollection {
             cagnotteProprietaire: acheteur.cagnotte)
     }
     
+    // POST /recompenses/utiliser/:foyerId/:utilisationId — active une carte du portefeuille
+    @Sendable
+    func utiliserRecompense(_ req: Request) async throws -> UtilisationRecompenseResponseDTO {
+        let payload = try req.auth.require(UserPayload.self)
+        let foyerId = try await foyerAutorise(req, userId: payload.id)
+        
+        guard let utilisationId = req.parameters.get("utilisationId", as: UUID.self) else {
+            throw Abort(.badRequest, reason: "utilisationId manquant ou invalide.")
+        }
+        
+        guard let utilisation = try await UtilisationRecompense.query(on: req.db)
+            .filter(\.$id == utilisationId)
+            .with(\.$proprietaire)
+            .with(\.$recompense, { recompense in
+                recompense.with(\.$categorie)
+            }).first() else {
+            throw Abort(.notFound, reason: "Cette carte n'existe pas.")
+        }
+        
+        let proprietaire = utilisation.proprietaire
+        guard proprietaire.$foyer.id == foyerId,
+              proprietaire.$user.id == payload.id || proprietaire.$gestionnaire.id == payload.id else {
+            throw Abort(.forbidden, reason: "Cette carte ne vous appartient pas.")
+        }
+        
+        guard utilisation.statutRecompense == .achetee else {
+            throw Abort(.conflict, reason: "Cette carte a deja ete utilisee.")
+        }
+        
+        let maintenant = Date()
+        utilisation.statutRecompense = .enCours
+        utilisation.dateUtilisation = maintenant
+        utilisation.deadline = maintenant.addingTimeInterval(Double(utilisation.recompense.dureeMinutes) * 60)
+        
+        try await utilisation.save(on: req.db)
+        
+        return utilisation.toResponseDTO(cagnotteProprietaire: proprietaire.cagnotte)
+    }
+    
+    // POST /recompenses/valider/:foyerId/:utilisationId
+    @Sendable
+    func validerUtilisation(_ req: Request) async throws -> UtilisationRecompenseResponseDTO {
+        try await cloturerUtilisation(req, statut: .validee)
+    }
+    
+    // POST /recompenses/refuser/:foyerId/:utilisationId
+    @Sendable
+    func refuserUtilisation(_ req: Request) async throws -> UtilisationRecompenseResponseDTO {
+        try await cloturerUtilisation(req, statut: .nonValidee)
+    }
+    
+    // Fin de vie d'une carte : .enCours / .attribuee -> .validee ou .nonValidee
+    private func cloturerUtilisation(_ req: Request, statut: StatutRecompense) async throws -> UtilisationRecompenseResponseDTO {
+        let payload = try req.auth.require(UserPayload.self)
+        let foyerId = try await foyerAutorise(req, userId: payload.id)
+        
+        guard let utilisationId = req.parameters.get("utilisationId", as: UUID.self) else {
+            throw Abort(.badRequest, reason: "utilisationId manquant ou invalide.")
+        }
+        
+        guard let utilisation = try await UtilisationRecompense.query(on: req.db)
+            .filter(\.$id == utilisationId)
+            .with(\.$proprietaire)
+            .with(\.$destinataire)
+            .with(\.$recompense, { recompense in
+                recompense.with(\.$categorie)
+            }).first() else {
+            throw Abort(.notFound, reason: "Cette carte n'existe pas.")
+        }
+        
+        // Seul le propriétaire juge : il a payé la carte, et des points sont en jeu.
+        let proprietaire = utilisation.proprietaire
+        guard proprietaire.$foyer.id == foyerId,
+              proprietaire.$user.id == payload.id || proprietaire.$gestionnaire.id == payload.id else {
+            throw Abort(.forbidden, reason: "Seul le propriétaire de la carte peut la clôturer.")
+        }
+        
+        guard utilisation.statutRecompense == .enCours || utilisation.statutRecompense == .attribuee else {
+            throw Abort(.conflict, reason: "Cette carte n'est pas en cours.")
+        }
+        
+        utilisation.statutRecompense = statut
+        
+        // Carte action : le destinataire gagne la moitié des points s'il a fait
+        // l'action, et la perd sinon. Un privilège n'a pas de destinataire.
+        let destinataire = utilisation.destinataire
+        let demiPoints = utilisation.recompense.points / 2
+        
+        try await req.db.transaction { db in
+            try await utilisation.save(on: db)
+            
+            if let destinataire {
+                if statut == .validee {
+                    destinataire.cagnotte += demiPoints
+                } else {
+                    destinataire.cagnotte = max(0, destinataire.cagnotte - demiPoints)
+                }
+                try await destinataire.save(on: db)
+            }
+        }
+        
+        return utilisation.toResponseDTO(cagnotteProprietaire: proprietaire.cagnotte)
+    }
+    
+    // POST /recompenses/attribuer/:foyerId/:utilisationId — donne une carte action à un membre
+    @Sendable
+    func attribuerRecompense(_ req: Request) async throws -> UtilisationRecompenseResponseDTO {
+        let payload = try req.auth.require(UserPayload.self)
+        let foyerId = try await foyerAutorise(req, userId: payload.id)
+        let dto = try req.content.decode(AttributionRecompenseDTO.self)
+
+        guard let utilisationId = req.parameters.get("utilisationId", as: UUID.self) else {
+            throw Abort(.badRequest, reason: "utilisationId manquant ou invalide.")
+        }
+
+        guard let utilisation = try await UtilisationRecompense.query(on: req.db)
+            .filter(\.$id == utilisationId)
+            .with(\.$proprietaire)
+            .with(\.$recompense, { recompense in
+                recompense.with(\.$categorie)
+            }).first() else {
+            throw Abort(.notFound, reason: "Cette carte n'existe pas.")
+        }
+
+        let proprietaire = utilisation.proprietaire
+        guard proprietaire.$foyer.id == foyerId,
+              proprietaire.$user.id == payload.id || proprietaire.$gestionnaire.id == payload.id else {
+            throw Abort(.forbidden, reason: "Cette carte ne vous appartient pas.")
+        }
+
+        guard utilisation.recompense.categorie.nom == "action" else {
+            throw Abort(.badRequest, reason: "Seule une carte action peut être attribuée à un membre.")
+        }
+
+        guard utilisation.statutRecompense == .achetee else {
+            throw Abort(.conflict, reason: "Cette carte a déjà été utilisée.")
+        }
+
+        guard dto.destinataire_id != proprietaire.id else {
+            throw Abort(.badRequest, reason: "Vous ne pouvez pas vous attribuer votre propre carte.")
+        }
+
+        guard let destinataire = try await Membre.find(dto.destinataire_id, on: req.db),
+              destinataire.$foyer.id == foyerId else {
+            throw Abort(.badRequest, reason: "Ce membre n'appartient pas à votre foyer.")
+        }
+
+        let maintenant = Date()
+        utilisation.statutRecompense = .attribuee
+        utilisation.$destinataire.id = try destinataire.requireID()
+        utilisation.dateUtilisation = maintenant
+        utilisation.deadline = maintenant.addingTimeInterval(Double(utilisation.recompense.dureeMinutes) * 60)
+
+        try await utilisation.save(on: req.db)
+
+        return utilisation.toResponseDTO(cagnotteProprietaire: proprietaire.cagnotte)
+    }
+    
+    // GET /recompenses/mes-missions/:foyerId/:membreId — les cartes action qu'on m'a confiées
+    @Sendable
+    func getMesMissions(_ req: Request) async throws -> [UtilisationRecompenseResponseDTO] {
+        let payload = try req.auth.require(UserPayload.self)
+        let foyerId = try await foyerAutorise(req, userId: payload.id)
+
+        guard let membreId = req.parameters.get("membreId", as: UUID.self) else {
+            throw Abort(.badRequest, reason: "membreId manquant ou invalide.")
+        }
+        guard let membre = try await Membre.find(membreId, on: req.db),
+              membre.$foyer.id == foyerId,
+              membre.$user.id == payload.id || membre.$gestionnaire.id == payload.id else {
+            throw Abort(.forbidden, reason: "Vous ne pouvez consulter que vos missions ou celles du membre que vous gérez")
+        }
+
+        let utilisations = try await UtilisationRecompense.query(on: req.db)
+            .filter(\.$destinataire.$id == membreId)
+            .filter(\.$statutRecompense ~~ [.attribuee, .enCours])
+            .with(\.$proprietaire)
+            .with(\.$recompense) { recompense in
+                recompense.with(\.$categorie)
+            }.all()
+
+        return utilisations.map { $0.toResponseDTO(cagnotteProprietaire: $0.proprietaire.cagnotte) }
+    }
+
+    // POST /recompenses/accepter/:foyerId/:utilisationId — le destinataire s'engage
+    @Sendable
+    func accepterMission(_ req: Request) async throws -> UtilisationRecompenseResponseDTO {
+        try await repondreMission(req, accepte: true)
+    }
+
+    // POST /recompenses/decliner/:foyerId/:utilisationId — le destinataire refuse la mission
+    @Sendable
+    func declinerMission(_ req: Request) async throws -> UtilisationRecompenseResponseDTO {
+        try await repondreMission(req, accepte: false)
+    }
+
+    // Réponse du DESTINATAIRE à une mission reçue.
+    // À ne pas confondre avec cloturerUtilisation, qui est la décision du PROPRIÉTAIRE
+    // une fois la deadline passée : autorisation inversée, et statuts de départ différents.
+    private func repondreMission(_ req: Request, accepte: Bool) async throws -> UtilisationRecompenseResponseDTO {
+        let payload = try req.auth.require(UserPayload.self)
+        let foyerId = try await foyerAutorise(req, userId: payload.id)
+
+        guard let utilisationId = req.parameters.get("utilisationId", as: UUID.self) else {
+            throw Abort(.badRequest, reason: "utilisationId manquant ou invalide.")
+        }
+
+        guard let utilisation = try await UtilisationRecompense.query(on: req.db)
+            .filter(\.$id == utilisationId)
+            .with(\.$proprietaire)
+            .with(\.$destinataire)
+            .with(\.$recompense, { recompense in
+                recompense.with(\.$categorie)
+            }).first() else {
+            throw Abort(.notFound, reason: "Cette mission n'existe pas.")
+        }
+
+        // Seul le destinataire répond à sa propre mission : c'est ce qui empêche
+        // le propriétaire de s'auto-accepter une carte, et l'inverse.
+        guard let destinataire = utilisation.destinataire,
+              destinataire.$foyer.id == foyerId,
+              destinataire.$user.id == payload.id || destinataire.$gestionnaire.id == payload.id else {
+            throw Abort(.forbidden, reason: "Cette mission ne vous est pas destinée.")
+        }
+
+        guard utilisation.statutRecompense == .attribuee else {
+            throw Abort(.conflict, reason: "Vous avez déjà répondu à cette mission.")
+        }
+
+        if accepte {
+            utilisation.statutRecompense = .enCours
+            try await utilisation.save(on: req.db)
+        } else {
+            // Refus : la carte est close tout de suite et le destinataire perd
+            // la moitié des points, sans attendre la deadline.
+            utilisation.statutRecompense = .nonValidee
+            let demiPoints = utilisation.recompense.points / 2
+            destinataire.cagnotte = max(0, destinataire.cagnotte - demiPoints)
+
+            try await req.db.transaction { db in
+                try await utilisation.save(on: db)
+                try await destinataire.save(on: db)
+            }
+        }
+
+        return utilisation.toResponseDTO(cagnotteProprietaire: utilisation.proprietaire.cagnotte)
+    }
+
+    // GET /recompenses/en-cours/:foyerId — tout ce qui tourne dans le foyer,
+    // tous membres confondus : c'est le fil d'activité du carrousel.
+    @Sendable
+    func getRecompensesEnCours(_ req: Request) async throws -> [UtilisationRecompenseResponseDTO] {
+        let payload = try req.auth.require(UserPayload.self)
+        let foyerId = try await foyerAutorise(req, userId: payload.id)
+
+        // UtilisationRecompense ne porte pas de foyer_id : on passe par les membres.
+        let membres = try await Membre.query(on: req.db)
+            .filter(\.$foyer.$id == foyerId)
+            .all()
+        let membreIds = try membres.map { try $0.requireID() }
+        guard !membreIds.isEmpty else { return [] }
+
+        let utilisations = try await UtilisationRecompense.query(on: req.db)
+            .filter(\.$proprietaire.$id ~~ membreIds)
+            .filter(\.$statutRecompense ~~ [.attribuee, .enCours])
+            .filter(\.$deadline > Date())
+            .sort(\.$deadline, .ascending)
+            .with(\.$proprietaire)
+            .with(\.$recompense) { recompense in
+                recompense.with(\.$categorie)
+            }.all()
+
+        return utilisations.map { $0.toResponseDTO(cagnotteProprietaire: $0.proprietaire.cagnotte) }
+    }
+
     // Récupère le foyerId de la route et vérifie que l'utilisateur y a accès (membre ou gestionnaire)
     private func foyerAutorise(_ req: Request, userId: UUID) async throws -> UUID {
         guard let foyerId = req.parameters.get("foyerId", as: UUID.self) else {
             throw Abort(.badRequest, reason: "foyerId manquant ou invalide.")
         }
-
+        
         let aAcces = try await Membre.query(on: req.db)
             .filter(\.$foyer.$id == foyerId)
             .group(.or) { group in
@@ -124,10 +432,11 @@ struct RecompenseController: RouteCollection {
                 group.filter(\.$gestionnaire.$id == userId)
             }
             .first() != nil
-
+        
         guard aAcces else {
             throw Abort(.forbidden, reason: "Vous n'avez pas accès à ce foyer.")
         }
         return foyerId
     }
 }
+
