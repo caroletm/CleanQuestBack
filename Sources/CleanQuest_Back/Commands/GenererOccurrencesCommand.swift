@@ -9,8 +9,7 @@
 //  En fonctionnement normal cette commande est inutile : la fenêtre est
 //  prolongée à la lecture, foyer par foyer (voir TacheController.prolongerFenetre).
 //  Elle reste pratique pour rattraper l'ensemble de la base d'un coup.
-//  La suppression des vieilles occurrences est gérée séparément par un
-//  script SQL planifié.
+//  La suppression des vieilles occurrences est faite par PurgeService.
 //
 
 import Vapor

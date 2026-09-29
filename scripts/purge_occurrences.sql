@@ -1,3 +1,6 @@
+-- ⚠️ OBSOLÈTE depuis le 2026-09-29 : la purge est faite par Services/PurgeService.swift
+-- (job Vapor quotidien). L'EVENT a été supprimé de la base locale. Fichier gardé pour mémoire.
+
 -- =============================================================================
 -- Purge automatique des occurrences de tâches de plus de 2 mois
 -- =============================================================================

@@ -129,4 +129,5 @@ public func configure(_ app: Application) async throws {
     try routes(app)
 
     ExpirationService.demarrer(app: app)
+    PurgeService.demarrer(app: app)
 }

@@ -59,6 +59,10 @@ struct PushService {
             do {
                 _ = try await apns.client.sendAlertNotification(notification, deviceToken: deviceToken.token)
                 app.logger.info("✅ Push accepté par Apple")
+            } catch let erreur as APNSError where erreur.reason == .badDeviceToken || erreur.reason == .unregistered {
+                // App désinstallée ou token périmé : inutile de le garder en base et de réessayer.
+                try? await deviceToken.delete(on: app.db)
+                app.logger.info("Device token périmé supprimé")
             } catch {
                 app.logger.error("Envoi du push : \(error)")
             }
