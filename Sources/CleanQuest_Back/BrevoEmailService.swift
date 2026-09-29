@@ -59,6 +59,54 @@ struct BrevoEmailService {
             throw Abort(.badRequest, reason: "Brevo error → \(errorBody)")
         }
     }
+
+    static func sendInvitation(
+        req: Request,
+        nom: String,
+        email: String,
+        foyer: Foyer
+    ) async throws {
+
+        let html = """
+        <h2>🧹 Bienvenue dans la communauté CleanQuest\n</h2>
+        <p>Bonjour <strong>\(nom)</strong>,</p>
+        <p>Tu as été invité.e à rejoindre le foyer :</p>
+        <p><strong>\(foyer.nom) </strong></p>
+        <p>Voici le code pour rejoindre ton foyer :</p>
+        <h3 style="color:#B9BBF6;">\(foyer.codeFoyer)</h3>
+        <p>🧽 Installe l'application avec cette adresse mail et entre ce code pour participer.</p>
+
+        """
+
+        try await sendEmail(
+            req: req,
+            to: email,
+            subject: "Rejoins ton foyer CleanQuest",
+            html: html)
+    }
+
+    static func sendResetCode(
+        req: Request,
+        nom: String,
+        email: String,
+        code: String
+    ) async throws {
+
+        let html = """
+        <h2>🔑 Réinitialisation de ton mot de passe</h2>
+        <p>Bonjour <strong>\(nom)</strong>,</p>
+        <p>Voici ton code pour choisir un nouveau mot de passe dans l'application CleanQuest :</p>
+        <h1 style="color:#B9BBF6; letter-spacing:6px;">\(code)</h1>
+        <p>Ce code est valable 15 minutes.</p>
+        <p>Si tu n'as rien demandé, ignore simplement cet email : ton mot de passe ne change pas.</p>
+        """
+
+        try await sendEmail(
+            req: req,
+            to: email,
+            subject: "Ton code CleanQuest",
+            html: html)
+    }
 }
 
 private extension ByteBuffer {

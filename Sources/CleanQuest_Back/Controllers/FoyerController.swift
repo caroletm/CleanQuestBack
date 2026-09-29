@@ -87,26 +87,20 @@ struct FoyerController: RouteCollection {
         for membre in membresDTO.filter({
             $0.email != nil && !($0.email ?? "").isEmpty
         }) {
-            let html = """
-            <h2>🧹 Bienvenue dans la communauté CleanQuest\n</h2>
-            <p>Bonjour <strong>\(membre.nom)</strong>,</p>
-            <p>Tu as été invité.e à rejoindre le foyer :</p>
-            <p><strong>\(newFoyer.nom) </strong></p>
-            <p>Voici le code pour rejoindre ton foyer :</p>
-            <h3 style="color:#B9BBF6;">\(newFoyer.codeFoyer)</h3>
-            <p>🧽 Installe l'application avec cette adresse mail et entre ce code pour participer.</p>
-            
-            """
-            
-            try await BrevoEmailService.sendEmail(
-                req: req,
-                to: membre.email ?? "",
-                subject: "Rejoins ton foyer CleanQuest",
-                html: html)
+            do {
+                try await BrevoEmailService.sendInvitation(
+                    req: req,
+                    nom: membre.nom,
+                    email: membre.email ?? "",
+                    foyer: newFoyer)
+            } catch {
+                // Le foyer est déjà enregistré : un mail raté ne doit pas faire échouer la création.
+                req.logger.error("Invitation non envoyée à \(membre.email ?? "") : \(String(reflecting: error))")
+            }
         }
         
         return FoyerDTO(
-            id: newFoyer.id, nom: newFoyer.nom, type: newFoyer.type, codeFoyer: newFoyer.codeFoyer, membres: membresDTO)
+            id: newFoyer.id, nom: newFoyer.nom, type: newFoyer.type, codeFoyer: newFoyer.codeFoyer, dateCreation: newFoyer.dateCreation, membres: membresDTO)
     }
     
     // GET /foyers
@@ -142,10 +136,11 @@ struct FoyerController: RouteCollection {
                     niveau: m.niveau,
                     userId: m.$user.id,
                     gestionnaireId: m.$gestionnaire.id,
-                    foyerId: m.$foyer.id
+                    foyerId: m.$foyer.id,
+                    estSupprime: m.estSupprime
                 )
             }
-            return FoyerDTO(id: foyer.id, nom: foyer.nom, type: foyer.type, codeFoyer: foyer.codeFoyer, membres: membresDTO)
+            return FoyerDTO(id: foyer.id, nom: foyer.nom, type: foyer.type, codeFoyer: foyer.codeFoyer, dateCreation: foyer.dateCreation, membres: membresDTO)
         }
     }
     

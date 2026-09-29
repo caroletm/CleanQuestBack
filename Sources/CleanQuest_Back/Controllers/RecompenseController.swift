@@ -24,6 +24,7 @@ struct RecompenseController: RouteCollection {
         protected.get("en-cours", ":foyerId", use: getRecompensesEnCours)
         protected.post("accepter", ":foyerId", ":utilisationId", use: accepterMission)
         protected.post("decliner", ":foyerId", ":utilisationId", use: declinerMission)
+        protected.get("utilisees", ":foyerId", use: getRecompensesUtilisees)
     }
     
     // GET /recompenses — catalogue global
@@ -244,6 +245,15 @@ struct RecompenseController: RouteCollection {
                 try await destinataire.save(on: db)
             }
         }
+
+        if let destinataire, let userId = destinataire.$user.id, userId != payload.id {
+            let valide = statut == .validee
+            await PushService.envoyer(
+                a: userId,
+                titre: valide ? "✅ \(proprietaire.nom) a confirmé ton action" : "❌ \(proprietaire.nom) n'a pas validé ton action",
+                message: "\(utilisation.recompense.nom) : \(valide ? "+" : "-")\(Int(demiPoints)) points",
+                on: req)
+        }
         
         return utilisation.toResponseDTO(cagnotteProprietaire: proprietaire.cagnotte)
     }
@@ -291,6 +301,10 @@ struct RecompenseController: RouteCollection {
             throw Abort(.badRequest, reason: "Ce membre n'appartient pas à votre foyer.")
         }
 
+        guard !destinataire.estSupprime else {
+            throw Abort(.badRequest, reason: "Ce membre a quitté CleanQuest.")
+        }
+
         let maintenant = Date()
         utilisation.statutRecompense = .attribuee
         utilisation.$destinataire.id = try destinataire.requireID()
@@ -298,6 +312,15 @@ struct RecompenseController: RouteCollection {
         utilisation.deadline = maintenant.addingTimeInterval(Double(utilisation.recompense.dureeMinutes) * 60)
 
         try await utilisation.save(on: req.db)
+
+        if let destinataireUserId = destinataire.$user.id {
+            await PushService.envoyer(
+                a: destinataireUserId,
+                titre: "\(proprietaire.nom) t'a envoyé une action",
+                message: "\(utilisation.recompense.nom) : rends-lui service pour gagner \(Int(utilisation.recompense.points / 2)) points",
+                notifId: "mission-\(utilisationId)",
+                on: req)
+        }
 
         return utilisation.toResponseDTO(cagnotteProprietaire: proprietaire.cagnotte)
     }
@@ -373,6 +396,12 @@ struct RecompenseController: RouteCollection {
             throw Abort(.conflict, reason: "Vous avez déjà répondu à cette mission.")
         }
 
+        // Le délai écoulé, il n'y a plus rien à accepter ni à refuser :
+        // c'est au propriétaire de trancher.
+        guard let deadline = utilisation.deadline, deadline > Date() else {
+            throw Abort(.conflict, reason: "Le délai de cette mission est écoulé.")
+        }
+
         if accepte {
             utilisation.statutRecompense = .enCours
             try await utilisation.save(on: req.db)
@@ -387,6 +416,14 @@ struct RecompenseController: RouteCollection {
                 try await utilisation.save(on: db)
                 try await destinataire.save(on: db)
             }
+        }
+
+        if let userId = utilisation.proprietaire.$user.id, userId != payload.id {
+            await PushService.envoyer(
+                a: userId,
+                titre: accepte ? "✅ \(destinataire.nom) a accepté ton action" : "❌ \(destinataire.nom) a décliné ton action",
+                message: accepte ? "\(utilisation.recompense.nom) est en cours" : "\(utilisation.recompense.nom) ne sera pas réalisée",
+                on: req)
         }
 
         return utilisation.toResponseDTO(cagnotteProprietaire: utilisation.proprietaire.cagnotte)
@@ -417,6 +454,31 @@ struct RecompenseController: RouteCollection {
             }.all()
 
         return utilisations.map { $0.toResponseDTO(cagnotteProprietaire: $0.proprietaire.cagnotte) }
+    }
+    
+    // GET /recompenses/utilisees/:foyerId — tout ce qui tourne dans le foyer,
+    // tous membres confondus : c'est le fil d'activité du carrousel.
+    @Sendable
+    func getRecompensesUtilisees(_ req: Request) async throws -> [UtilisationRecompenseResponseDTO] {
+        let payload = try req.auth.require(UserPayload.self)
+        let foyerId = try await foyerAutorise(req, userId: payload.id)
+        
+        // UtilisationRecompense ne porte pas de foyer_id : on passe par les membres.
+        let membres = try await Membre.query(on: req.db)
+            .filter(\.$foyer.$id == foyerId)
+            .all()
+        
+        let membreIds = try membres.map { try $0.requireID() }
+        guard !membreIds.isEmpty else { return [] }
+        
+        let utilisations = try await UtilisationRecompense.query(on: req.db)
+            .filter(\.$proprietaire.$id ~~ membreIds)
+            .filter(\.$statutRecompense ~~ [.validee, .nonValidee] )
+            .with(\.$proprietaire)
+            .with(\.$recompense) { recompense in
+                recompense.with(\.$categorie)
+            }.all()
+        return utilisations.map {$0.toResponseDTO(cagnotteProprietaire: $0.proprietaire.cagnotte)}
     }
 
     // Récupère le foyerId de la route et vérifie que l'utilisateur y a accès (membre ou gestionnaire)

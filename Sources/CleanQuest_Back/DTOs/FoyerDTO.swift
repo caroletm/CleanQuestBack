@@ -12,6 +12,7 @@ struct FoyerDTO: Content {
     var nom: String
     var type: TypeFoyer
     var codeFoyer: String
+    var dateCreation: Date?
     var membres : [MembreDTO]
 }
 

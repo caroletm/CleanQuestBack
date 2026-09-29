@@ -16,12 +16,19 @@ final class User : Model, Content, @unchecked Sendable {
     @Field(key: "email") var email: String
     @Field(key: "motDePasse") var motDePasse: String
     @Field(key: "onboarding") var onboarding: Bool
+    @Field(key: "badge") var badge: Int
+    // Code de réinitialisation du mot de passe, haché comme un mot de passe.
+    @OptionalField(key: "resetCode") var resetCode: String?
+    @OptionalField(key: "resetExpiration") var resetExpiration: Date?
+    @Field(key: "resetEssais") var resetEssais: Int
 
     @Children(for : \.$user) var membres: [Membre]
     @Children(for : \.$gestionnaire) var gestionnaires: [Membre]
 
     init() {
         self.id = UUID()
+        self.badge = 0
+        self.resetEssais = 0
     }
 
     init(id: UUID? = nil, nom : String, email : String, motDePasse : String, onboarding: Bool) {
@@ -30,5 +37,7 @@ final class User : Model, Content, @unchecked Sendable {
         self.email = email
         self.motDePasse = motDePasse
         self.onboarding = onboarding
+        self.badge = 0
+        self.resetEssais = 0
     }
 }

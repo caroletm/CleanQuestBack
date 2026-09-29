@@ -26,3 +26,25 @@ struct UserUpdateDTO : Content {
     var password: String?
     var firstConnection: Bool?
 }
+
+struct DeviceTokenDTO : Content {
+    var token : String
+}
+
+struct BadgeDTO : Content {
+    var badge : Int
+}
+
+struct ForgotPasswordDTO : Content {
+    var email : String
+}
+
+struct ResetPasswordDTO : Content {
+    var email : String
+    var code : String
+    var nouveauMotDePasse : String
+}
+
+struct MessageDTO : Content {
+    var message : String
+}

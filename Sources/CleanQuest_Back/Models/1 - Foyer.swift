@@ -19,6 +19,7 @@ final class Foyer : Model, Content, @unchecked Sendable {
     @Children(for: \.$foyer) var membres: [Membre]
     @Children(for : \.$foyer) var taches: [Tache]
     @Children(for: \.$foyer) var categoriesTache: [CategorieTache]
+    @Timestamp(key: "dateCreation", on: .create) var dateCreation: Date?
     
     init() {
         self.id = UUID()

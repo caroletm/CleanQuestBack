@@ -530,6 +530,20 @@ struct TacheController: RouteCollection {
 
         try await occurence.save(on: req.db)
 
+        let membresFoyer = try await Membre.query(on: req.db)
+            .filter(\.$foyer.$id == foyerId)
+            .all()
+        let aPrevenir = Set(membresFoyer.compactMap { $0.$user.id })
+            .subtracting([payload.id, realisateur.$user.id].compactMap { $0 })
+        for userId in aPrevenir {
+            await PushService.envoyer(
+                a: userId,
+                titre: "Tâche à valider",
+                message: "\(realisateur.nom) attend que tu valides « \(occurence.tache.nom) »",
+                notifId: "tache-a-valider-\(occurenceId)",
+                on: req)
+        }
+
         let tache = occurence.tache
         return OccurenceTacheDTO(
             id: occurence.id,
@@ -610,6 +624,14 @@ struct TacheController: RouteCollection {
             try await realisateur.save(on: db)
         }
 
+        if let userId = realisateur.$user.id, userId != payload.id {
+            await PushService.envoyer(
+                a: userId,
+                titre: "✅ Tâche validée",
+                message: "« \(occurence.tache.nom) » validée par \(validateur.nom) : +\(Int(occurence.tache.points)) points",
+                on: req)
+        }
+
         let tache = occurence.tache
         return OccurenceTacheDTO(
             id: occurence.id,
@@ -661,6 +683,16 @@ struct TacheController: RouteCollection {
         occurence.statut = .nonValidee
 
         try await occurence.save(on: req.db)
+
+        if let realisateur = try await occurence.$realisateur.get(on: req.db),
+           let userId = realisateur.$user.id, userId != payload.id {
+            await PushService.envoyer(
+                a: userId,
+                titre: "❌ Tâche non validée",
+                message: "« \(occurence.tache.nom) » n'a pas été validée : refais-la pour gagner \(Int(occurence.tache.points)) points",
+                notifId: "tache-non-validee-\(occurenceId)",
+                on: req)
+        }
 
         let tache = occurence.tache
         return OccurenceTacheDTO(

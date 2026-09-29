@@ -4,6 +4,9 @@ import FluentMySQLDriver
 import Vapor
 import FluentSQL
 import JWT
+import APNS
+import APNSCore
+import VaporAPNS
 
 // configures your application
 public func configure(_ app: Application) async throws {
@@ -46,6 +49,8 @@ public func configure(_ app: Application) async throws {
     
     app.middleware.use(CORSMiddleware(configuration: corsConfiguration))
     
+    // Avant FileMiddleware : il doit englober la réponse du fichier pour pouvoir y ajouter l'en-tête.
+    app.middleware.use(CacheIconesMiddleware())
     app.middleware.use(FileMiddleware(publicDirectory: app.directory.publicDirectory))
     
     let brevoAPIKey = Environment.get("BREVO_API_KEY") ?? ""
@@ -79,6 +84,12 @@ public func configure(_ app: Application) async throws {
     app.migrations.add(AddDureeMinutesRecompense())
     app.migrations.add(AddUniqueOccurenceTache())
     app.migrations.add(UpdateUtilisationRecompense())
+    app.migrations.add(UpdateDateCreationFoyer())
+    app.migrations.add(CreateDeviceToken())
+    app.migrations.add(AddExpirationNotifieeUtilisationRecompense())
+    app.migrations.add(AddBadgeUser())
+    app.migrations.add(AddResetPasswordUser())
+    app.migrations.add(AddEstSupprimeMembre())
 
     try await app.autoMigrate()
 
@@ -91,6 +102,31 @@ public func configure(_ app: Application) async throws {
     // register commands
     app.asyncCommands.use(GenererOccurrencesCommand(), as: "generer-occurrences")
 
+    // Push APNs : sans les variables d'env, le serveur démarre quand même mais n'envoie pas de push.
+    if let keyPath = Environment.get("APNS_KEY_PATH"),
+       let keyId = Environment.get("APNS_KEY_ID"),
+       let teamId = Environment.get("APNS_TEAM_ID") {
+        let apnsConfig = APNSClientConfiguration(
+            authenticationMethod: .jwt(
+                privateKey: try .loadFrom(string: String(contentsOfFile: keyPath, encoding: .utf8)),
+                keyIdentifier: keyId,
+                teamIdentifier: teamId
+            ),
+            environment: .development
+        )
+        app.apns.containers.use(
+            apnsConfig,
+            eventLoopGroupProvider: .shared(app.eventLoopGroup),
+            responseDecoder: JSONDecoder(),
+            requestEncoder: JSONEncoder(),
+            as: .default
+        )
+    } else {
+        print("⚠️ Variables APNS_* manquantes : push désactivés")
+    }
+
     // register routes
     try routes(app)
+
+    ExpirationService.demarrer(app: app)
 }

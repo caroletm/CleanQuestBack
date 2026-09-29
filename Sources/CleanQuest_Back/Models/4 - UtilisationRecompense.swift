@@ -19,9 +19,11 @@ final class UtilisationRecompense : Model, Content, @unchecked Sendable {
     @Parent(key: "proprietaire_id") var proprietaire: Membre
     @OptionalParent(key: "destinataire_id") var destinataire: Membre?
     @Parent(key: "recompense_id") var recompense: Recompense
+    @Field(key: "expirationNotifiee") var expirationNotifiee: Bool
     
     init() {
         self.id = UUID()
+        self.expirationNotifiee = false
     }
     init(id: UUID? = nil, dateAchat: Date? = nil, dateUtilisation: Date? = nil, statutRecompense: StatutRecompense, deadline: Date? = nil, proprietaireId: Membre.IDValue, recompenseId: Recompense.IDValue) {
         self.id = id ?? UUID()
@@ -31,6 +33,7 @@ final class UtilisationRecompense : Model, Content, @unchecked Sendable {
         self.deadline = deadline
         self.$proprietaire.id = proprietaireId
         self.$recompense.id = recompenseId
+        self.expirationNotifiee = false
     }
 }
 

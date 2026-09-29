@@ -20,6 +20,7 @@ struct MembreDTO : Content {
     var userId : UUID?
     var gestionnaireId : UUID?
     var foyerId : UUID
+    var estSupprime : Bool = false
 }
 
 struct CreateMembreDTO : Content {
@@ -44,6 +45,10 @@ struct UpdateMembreDTO : Content {
 struct MembreJoinDTO : Content {
     var email: String
     var codeFoyer: String
+    // Apportés par celui qui rejoint : l'inviteur n'a saisi qu'un nom et un email.
+    var nom: String?
+    var couleur: String?
+    var avatar: String?
 }
 
 struct MembreJoinResponse: Content {

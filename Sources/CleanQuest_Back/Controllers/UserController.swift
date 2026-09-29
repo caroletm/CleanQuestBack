@@ -14,10 +14,15 @@ struct UserController : RouteCollection {
         let users = routes.grouped("users")
         users.post(use: createUser)
         users.post("login", use: login)
+        users.post("password", "forgot", use: forgotPassword)
+        users.post("password", "reset", use: resetPassword)
         
         let protected = users.grouped(JWTMiddleware())
         protected.get("profile", use: profile)
-        protected.get(use: getAllUsers)
+        protected.post("device-token", use: saveDeviceToken)
+        protected.delete("device-token", ":deviceToken", use: deleteDeviceToken)
+        protected.post("test-push", use: testPush)
+        protected.post("badge", "reset", use: resetBadge)
         protected.get(":id", use: getUserById)
         protected.patch(":id", use: updateUserById)
         protected.delete(":id", use: deleteUserById)
@@ -123,28 +128,24 @@ func profile(req: Request) async throws -> UserDTO {
 
 //MARK: - GET USER
 
-//GET/users
-@Sendable
-func getAllUsers(req: Request) async throws -> [UserDTO] {
-    let users: [User] = try await User.query(on: req.db).all()
-    
-    return users.map { user in
-        UserDTO(
-            id: user.id,
-            name: user.nom,
-            email: user.email,
-            firstConnection: user.onboarding)
+// Un user ne peut lire, modifier ou supprimer que son propre compte.
+func exigerSonPropreCompte(_ req: Request) throws -> UUID {
+    let payload = try req.auth.require(UserPayload.self)
+    guard let id = req.parameters.get("id", as: UUID.self) else {
+        throw Abort(.badRequest, reason: "ID invalide")
     }
+    guard id == payload.id else {
+        throw Abort(.forbidden, reason: "Vous ne pouvez agir que sur votre propre compte")
+    }
+    return id
 }
 
 //GET/users/:id
 @Sendable
 func getUserById(req: Request) async throws -> UserDTO {
-    guard let user = try await User.find(req.parameters.require("id"), on: req.db) else {
+    let id = try exigerSonPropreCompte(req)
+    guard let user = try await User.find(id, on: req.db) else {
         throw Abort(.notFound)
-    }
-    guard let id = user.id else {
-        throw Abort(.internalServerError, reason: "ID de l'utilisateur manquant")
     }
     return UserDTO(id: id, name: user.nom, email: user.email, firstConnection: user.onboarding)
 }
@@ -153,10 +154,33 @@ func getUserById(req: Request) async throws -> UserDTO {
 
 @Sendable
 func deleteUserById(_ req: Request) async throws -> Response {
-    guard let user = try await User.find(req.parameters.require("id"), on: req.db) else {
+    let id = try exigerSonPropreCompte(req)
+    guard let user = try await User.find(id, on: req.db) else {
         throw Abort(.notFound)
     }
-    try await user.delete(on: req.db)
+
+    // Le membre de la personne et ceux qu'elle gère deviennent des « anciens membres » :
+    // leurs tâches et récompenses restent dans l'historique du foyer.
+    // Les liens vers le compte sont coupés AVANT la suppression, sinon la cascade
+    // sur gestionnaire_id effacerait les membres gérés et tout leur historique.
+    let sesMembres = try await Membre.query(on: req.db)
+        .group(.or) { group in
+            group.filter(\.$user.$id == id)
+            group.filter(\.$gestionnaire.$id == id)
+        }
+        .all()
+
+    try await req.db.transaction { db in
+        for membre in sesMembres {
+            membre.nom = "Ancien membre"
+            membre.email = ""
+            membre.estSupprime = true
+            membre.$user.id = nil
+            membre.$gestionnaire.id = nil
+            try await membre.save(on: db)
+        }
+        try await user.delete(on: db)
+    }
     return Response(status: .ok)
 }
 
@@ -165,9 +189,7 @@ func deleteUserById(_ req: Request) async throws -> Response {
 @Sendable
 func updateUserById(req: Request) async throws -> UserDTO {
     
-    guard let id = req.parameters.get("id", as: UUID.self) else {
-        throw Abort(.badRequest, reason: "ID invalide")
-    }
+    let id = try exigerSonPropreCompte(req)
     
     guard let user = try await User.find(id, on: req.db) else {
         throw Abort(.notFound, reason: "Utilisateur introuvable")
@@ -191,4 +213,120 @@ func updateUserById(req: Request) async throws -> UserDTO {
         throw Abort(.internalServerError, reason: "ID de l'utilisateur manquant")
     }
     return UserDTO(id: userId, name: user.nom, email: user.email, firstConnection: user.onboarding)
+}
+
+//MARK: - NOTIFICATIONS PUSH
+
+//POST/users/device-token
+@Sendable
+func saveDeviceToken(req: Request) async throws -> DeviceTokenDTO {
+    let payload = try req.auth.require(UserPayload.self)
+    let dto = try req.content.decode(DeviceTokenDTO.self)
+
+    // Même iPhone, autre compte connecté : on rattache le token au nouveau user au lieu d'en créer un 2e.
+    if let existant = try await DeviceToken.query(on: req.db)
+        .filter(\.$token == dto.token)
+        .first() {
+        existant.$user.id = payload.id
+        try await existant.save(on: req.db)
+    } else {
+        try await DeviceToken(token: dto.token, userId: payload.id).save(on: req.db)
+    }
+
+    return dto
+}
+
+//POST/users/test-push
+@Sendable
+func testPush(req: Request) async throws -> HTTPStatus {
+    let payload = try req.auth.require(UserPayload.self)
+    await PushService.envoyer(a: payload.id, titre: "CleanQuest", message: "Premier push depuis Vapor 🎉", on: req)
+    return .ok
+}
+
+//POST/users/badge/reset
+@Sendable
+func resetBadge(req: Request) async throws -> BadgeDTO {
+    let payload = try req.auth.require(UserPayload.self)
+    guard let user = try await User.find(payload.id, on: req.db) else {
+        throw Abort(.notFound)
+    }
+    user.badge = 0
+    try await user.save(on: req.db)
+    return BadgeDTO(badge: 0)
+}
+
+//DELETE/users/device-token/:deviceToken
+@Sendable
+func deleteDeviceToken(req: Request) async throws -> HTTPStatus {
+    let payload = try req.auth.require(UserPayload.self)
+    guard let deviceToken = req.parameters.get("deviceToken") else {
+        throw Abort(.badRequest, reason: "deviceToken manquant")
+    }
+
+    try await DeviceToken.query(on: req.db)
+        .filter(\.$token == deviceToken)
+        .filter(\.$user.$id == payload.id)
+        .delete()
+
+    return .noContent
+}
+
+//MARK: - MOT DE PASSE OUBLIÉ
+
+//POST/users/password/forgot
+@Sendable
+func forgotPassword(req: Request) async throws -> MessageDTO {
+    let dto = try req.content.decode(ForgotPasswordDTO.self)
+    let email = dto.email.trimmingCharacters(in: .whitespaces)
+
+    if let user = try await User.query(on: req.db)
+        .filter(\.$email == email)
+        .first() {
+        let code = String(format: "%06d", Int.random(in: 0...999_999))
+        user.resetCode = try Bcrypt.hash(code)
+        user.resetExpiration = Date().addingTimeInterval(15 * 60)
+        user.resetEssais = 0
+        try await user.save(on: req.db)
+
+        try await BrevoEmailService.sendResetCode(req: req, nom: user.nom, email: user.email, code: code)
+    }
+
+    // Même réponse que le compte existe ou non : sinon on révèle quels emails sont inscrits.
+    return MessageDTO(message: "Si un compte existe avec cet email, un code vient d'être envoyé.")
+}
+
+//POST/users/password/reset
+@Sendable
+func resetPassword(req: Request) async throws -> MessageDTO {
+    let dto = try req.content.decode(ResetPasswordDTO.self)
+    let email = dto.email.trimmingCharacters(in: .whitespaces)
+
+    guard dto.nouveauMotDePasse.count >= 8 else {
+        throw Abort(.badRequest, reason: "Le mot de passe doit contenir au moins 8 caractères")
+    }
+
+    guard let user = try await User.query(on: req.db)
+            .filter(\.$email == email)
+            .first(),
+          let codeHache = user.resetCode,
+          let expiration = user.resetExpiration,
+          expiration > Date(),
+          user.resetEssais < 5 else {
+        throw Abort(.badRequest, reason: "Code invalide ou expiré. Redemande un nouveau code.")
+    }
+
+    guard try Bcrypt.verify(dto.code.trimmingCharacters(in: .whitespaces), created: codeHache) else {
+        user.resetEssais += 1
+        try await user.save(on: req.db)
+        throw Abort(.badRequest, reason: "Code incorrect")
+    }
+
+    user.motDePasse = try Bcrypt.hash(dto.nouveauMotDePasse)
+    user.resetCode = nil
+    user.resetExpiration = nil
+    user.resetEssais = 0
+    try await user.save(on: req.db)
+
+    return MessageDTO(message: "Mot de passe modifié")
 }

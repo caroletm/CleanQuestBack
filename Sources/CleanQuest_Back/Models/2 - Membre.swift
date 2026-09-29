@@ -20,6 +20,8 @@ final class Membre : Model, Content, @unchecked Sendable {
     @OptionalField(key: "avatar") var avatar: String?
     @Field(key: "cagnotte") var cagnotte: Double
     @Enum(key: "niveau") var niveau: Niveau
+    // Compte supprimé : le membre reste pour garder l'historique du foyer, mais anonymisé.
+    @Field(key: "estSupprime") var estSupprime: Bool
 
     @OptionalParent(key: "user_id") var user: User?
     @OptionalParent(key: "gestionnaire_id") var gestionnaire: User?
@@ -33,6 +35,7 @@ final class Membre : Model, Content, @unchecked Sendable {
  
     init() {
         self.id = UUID()
+        self.estSupprime = false
     }
 
     init(id: UUID? = nil, estGere: Bool, dateEntree: Date, nom : String, email: String, couleur: String? = nil, avatar: String? = nil, cagnotte: Double = 0.0, niveau: Niveau = .debutant) {
@@ -45,5 +48,6 @@ final class Membre : Model, Content, @unchecked Sendable {
         self.avatar = avatar
         self.cagnotte = cagnotte
         self.niveau = niveau
+        self.estSupprime = false
     }
 }
