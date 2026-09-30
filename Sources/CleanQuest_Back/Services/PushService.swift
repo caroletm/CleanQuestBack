@@ -59,6 +59,9 @@ struct PushService {
             do {
                 _ = try await apns.client.sendAlertNotification(notification, deviceToken: deviceToken.token)
                 app.logger.info("✅ Push accepté par Apple")
+                // Une alerte ne réveille pas l'app : ce push silencieux lui permet de rafraîchir le widget.
+                let silencieux = APNSBackgroundNotification(expiration: .none, topic: topic, payload: PushPayload(notifId: nil))
+                _ = try? await apns.client.sendBackgroundNotification(silencieux, deviceToken: deviceToken.token)
             } catch let erreur as APNSError where erreur.reason == .badDeviceToken || erreur.reason == .unregistered {
                 // App désinstallée ou token périmé : inutile de le garder en base et de réessayer.
                 try? await deviceToken.delete(on: app.db)
