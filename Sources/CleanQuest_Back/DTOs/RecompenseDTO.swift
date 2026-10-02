@@ -40,3 +40,10 @@ struct AttributionRecompenseDTO  : Content {
     var destinataire_id: UUID
 }
     
+
+struct TableauRecompensesDTO : Content {
+    var achetees : [UtilisationRecompenseResponseDTO]
+    var missions : [UtilisationRecompenseResponseDTO]
+    var enCours : [UtilisationRecompenseResponseDTO]
+    var nombreUtilisees : Int
+}

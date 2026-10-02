@@ -25,6 +25,7 @@ struct RecompenseController: RouteCollection {
         protected.post("accepter", ":foyerId", ":utilisationId", use: accepterMission)
         protected.post("decliner", ":foyerId", ":utilisationId", use: declinerMission)
         protected.get("utilisees", ":foyerId", use: getRecompensesUtilisees)
+        protected.get("tableau", ":foyerId", ":membreId", use: getTableauRecompenses)
     }
     
     // GET /recompenses — catalogue global
@@ -53,22 +54,9 @@ struct RecompenseController: RouteCollection {
         let payload = try req.auth.require(UserPayload.self)
         let foyerId = try await foyerAutorise(req, userId: payload.id)
         
-        guard let membreId = req.parameters.get("membreId", as: UUID.self) else {
-            throw Abort(.badRequest, reason: "membre Id mamnquant ou invalide")
-        }
-        guard let membre = try await Membre.find(membreId, on: req.db),
-              membre.$foyer.id == foyerId,
-              membre.$user.id == payload.id || membre.$gestionnaire.id == payload.id else {
-            throw Abort(.forbidden, reason: "Vous ne pouvez consulter que vos récompenses ou celles du membre que vous gérez")
-        }
-        let utilisations = try await UtilisationRecompense.query(on: req.db)
-            .filter(\.$proprietaire.$id == membreId)
-            .filter(\.$statutRecompense ~~ [.achetee, .attribuee, .enCours])
-            .with(\.$recompense) { recompense in
-                recompense.with(\.$categorie)
-            }.all()
-        
-        return utilisations.map { $0.toResponseDTO(cagnotteProprietaire: membre.cagnotte) }
+        let membre = try await membreConsultable(req, foyerId: foyerId, userId: payload.id,
+                                                 raison: "Vous ne pouvez consulter que vos récompenses ou celles du membre que vous gérez")
+        return try await cartesAchetees(de: membre, on: req.db)
     }
     
     // POST /recompenses/:foyerId/:recompenseId
@@ -331,24 +319,9 @@ struct RecompenseController: RouteCollection {
         let payload = try req.auth.require(UserPayload.self)
         let foyerId = try await foyerAutorise(req, userId: payload.id)
 
-        guard let membreId = req.parameters.get("membreId", as: UUID.self) else {
-            throw Abort(.badRequest, reason: "membreId manquant ou invalide.")
-        }
-        guard let membre = try await Membre.find(membreId, on: req.db),
-              membre.$foyer.id == foyerId,
-              membre.$user.id == payload.id || membre.$gestionnaire.id == payload.id else {
-            throw Abort(.forbidden, reason: "Vous ne pouvez consulter que vos missions ou celles du membre que vous gérez")
-        }
-
-        let utilisations = try await UtilisationRecompense.query(on: req.db)
-            .filter(\.$destinataire.$id == membreId)
-            .filter(\.$statutRecompense ~~ [.attribuee, .enCours])
-            .with(\.$proprietaire)
-            .with(\.$recompense) { recompense in
-                recompense.with(\.$categorie)
-            }.all()
-
-        return utilisations.map { $0.toResponseDTO(cagnotteProprietaire: $0.proprietaire.cagnotte) }
+        let membre = try await membreConsultable(req, foyerId: foyerId, userId: payload.id,
+                                                 raison: "Vous ne pouvez consulter que vos missions ou celles du membre que vous gérez")
+        return try await missions(de: membre, on: req.db)
     }
 
     // POST /recompenses/accepter/:foyerId/:utilisationId — le destinataire s'engage
@@ -436,24 +409,7 @@ struct RecompenseController: RouteCollection {
         let payload = try req.auth.require(UserPayload.self)
         let foyerId = try await foyerAutorise(req, userId: payload.id)
 
-        // UtilisationRecompense ne porte pas de foyer_id : on passe par les membres.
-        let membres = try await Membre.query(on: req.db)
-            .filter(\.$foyer.$id == foyerId)
-            .all()
-        let membreIds = try membres.map { try $0.requireID() }
-        guard !membreIds.isEmpty else { return [] }
-
-        let utilisations = try await UtilisationRecompense.query(on: req.db)
-            .filter(\.$proprietaire.$id ~~ membreIds)
-            .filter(\.$statutRecompense ~~ [.attribuee, .enCours])
-            .filter(\.$deadline > Date())
-            .sort(\.$deadline, .ascending)
-            .with(\.$proprietaire)
-            .with(\.$recompense) { recompense in
-                recompense.with(\.$categorie)
-            }.all()
-
-        return utilisations.map { $0.toResponseDTO(cagnotteProprietaire: $0.proprietaire.cagnotte) }
+        return try await cartesEnCours(foyerId: foyerId, on: req.db)
     }
     
     // GET /recompenses/utilisees/:foyerId — tout ce qui tourne dans le foyer,
@@ -463,14 +419,9 @@ struct RecompenseController: RouteCollection {
         let payload = try req.auth.require(UserPayload.self)
         let foyerId = try await foyerAutorise(req, userId: payload.id)
         
-        // UtilisationRecompense ne porte pas de foyer_id : on passe par les membres.
-        let membres = try await Membre.query(on: req.db)
-            .filter(\.$foyer.$id == foyerId)
-            .all()
-        
-        let membreIds = try membres.map { try $0.requireID() }
+        let membreIds = try await membreIdsDuFoyer(foyerId, on: req.db)
         guard !membreIds.isEmpty else { return [] }
-        
+
         let utilisations = try await UtilisationRecompense.query(on: req.db)
             .filter(\.$proprietaire.$id ~~ membreIds)
             .filter(\.$statutRecompense ~~ [.validee, .nonValidee] )
@@ -479,6 +430,94 @@ struct RecompenseController: RouteCollection {
                 recompense.with(\.$categorie)
             }.all()
         return utilisations.map {$0.toResponseDTO(cagnotteProprietaire: $0.proprietaire.cagnotte)}
+    }
+
+    // GET /recompenses/tableau/:foyerId/:membreId — tout l'onglet Récompenses en un seul appel
+    @Sendable
+    func getTableauRecompenses(_ req: Request) async throws -> TableauRecompensesDTO {
+        let payload = try req.auth.require(UserPayload.self)
+        let foyerId = try await foyerAutorise(req, userId: payload.id)
+        let membre = try await membreConsultable(req, foyerId: foyerId, userId: payload.id,
+                                                 raison: "Vous ne pouvez consulter que vos récompenses ou celles du membre que vous gérez")
+
+        return TableauRecompensesDTO(
+            achetees: try await cartesAchetees(de: membre, on: req.db),
+            missions: try await missions(de: membre, on: req.db),
+            enCours: try await cartesEnCours(foyerId: foyerId, on: req.db),
+            nombreUtilisees: try await nombreUtilisees(foyerId: foyerId, on: req.db)
+        )
+    }
+
+    //MARK: - REQUETES PARTAGEES (anciennes routes + tableau)
+
+    // Le membre de la route, s'il appartient au foyer et que l'utilisateur est lui-même ou son gestionnaire
+    private func membreConsultable(_ req: Request, foyerId: UUID, userId: UUID, raison: String) async throws -> Membre {
+        guard let membreId = req.parameters.get("membreId", as: UUID.self) else {
+            throw Abort(.badRequest, reason: "membreId manquant ou invalide.")
+        }
+        guard let membre = try await Membre.find(membreId, on: req.db),
+              membre.$foyer.id == foyerId,
+              membre.$user.id == userId || membre.$gestionnaire.id == userId else {
+            throw Abort(.forbidden, reason: raison)
+        }
+        return membre
+    }
+
+    private func cartesAchetees(de membre: Membre, on db: any Database) async throws -> [UtilisationRecompenseResponseDTO] {
+        let membreId = try membre.requireID()
+        let utilisations = try await UtilisationRecompense.query(on: db)
+            .filter(\.$proprietaire.$id == membreId)
+            .filter(\.$statutRecompense ~~ [.achetee, .attribuee, .enCours])
+            .with(\.$recompense) { recompense in
+                recompense.with(\.$categorie)
+            }.all()
+        return utilisations.map { $0.toResponseDTO(cagnotteProprietaire: membre.cagnotte) }
+    }
+
+    private func missions(de membre: Membre, on db: any Database) async throws -> [UtilisationRecompenseResponseDTO] {
+        let membreId = try membre.requireID()
+        let utilisations = try await UtilisationRecompense.query(on: db)
+            .filter(\.$destinataire.$id == membreId)
+            .filter(\.$statutRecompense ~~ [.attribuee, .enCours])
+            .with(\.$proprietaire)
+            .with(\.$recompense) { recompense in
+                recompense.with(\.$categorie)
+            }.all()
+        return utilisations.map { $0.toResponseDTO(cagnotteProprietaire: $0.proprietaire.cagnotte) }
+    }
+
+    // UtilisationRecompense ne porte pas de foyer_id : on passe par les membres.
+    private func membreIdsDuFoyer(_ foyerId: UUID, on db: any Database) async throws -> [UUID] {
+        let membres = try await Membre.query(on: db)
+            .filter(\.$foyer.$id == foyerId)
+            .all()
+        return try membres.map { try $0.requireID() }
+    }
+
+    private func cartesEnCours(foyerId: UUID, on db: any Database) async throws -> [UtilisationRecompenseResponseDTO] {
+        let membreIds = try await membreIdsDuFoyer(foyerId, on: db)
+        guard !membreIds.isEmpty else { return [] }
+
+        let utilisations = try await UtilisationRecompense.query(on: db)
+            .filter(\.$proprietaire.$id ~~ membreIds)
+            .filter(\.$statutRecompense ~~ [.attribuee, .enCours])
+            .filter(\.$deadline > Date())
+            .sort(\.$deadline, .ascending)
+            .with(\.$proprietaire)
+            .with(\.$recompense) { recompense in
+                recompense.with(\.$categorie)
+            }.all()
+        return utilisations.map { $0.toResponseDTO(cagnotteProprietaire: $0.proprietaire.cagnotte) }
+    }
+
+    private func nombreUtilisees(foyerId: UUID, on db: any Database) async throws -> Int {
+        let membreIds = try await membreIdsDuFoyer(foyerId, on: db)
+        guard !membreIds.isEmpty else { return 0 }
+
+        return try await UtilisationRecompense.query(on: db)
+            .filter(\.$proprietaire.$id ~~ membreIds)
+            .filter(\.$statutRecompense ~~ [.validee, .nonValidee])
+            .count()
     }
 
     // Récupère le foyerId de la route et vérifie que l'utilisateur y a accès (membre ou gestionnaire)

@@ -17,6 +17,7 @@ struct FoyerController: RouteCollection {
         protected.post(use: createFoyer)
         protected.get(use: getAllFoyers)
         protected.delete(":id", use: deleteFoyerById)
+        protected.patch(":id", use: renommerFoyer)
     }
     
     
@@ -150,7 +151,6 @@ struct FoyerController: RouteCollection {
     func deleteFoyerById(_ req: Request) async throws -> Response {
         
         let payload = try req.auth.require(UserPayload.self)
-        _ = payload.id
     
         guard let id = req.parameters.get("id", as: UUID.self) else {
             throw Abort(.badRequest, reason: "ID invalide")
@@ -159,9 +159,51 @@ struct FoyerController: RouteCollection {
         guard let foyer = try await Foyer.find(id, on: req.db) else {
             throw Abort(.notFound)
         }
+        try await verifierAcces(foyerId: id, userId: payload.id, on: req.db)
         
         try await foyer.delete(on: req.db)
         return Response(status: .noContent)
+    }
+    
+    // PATCH /foyers/:id — renomme le foyer (n'importe quel membre du foyer)
+    @Sendable
+    func renommerFoyer(_ req: Request) async throws -> MessageDTO {
+        let payload = try req.auth.require(UserPayload.self)
+        
+        guard let id = req.parameters.get("id", as: UUID.self) else {
+            throw Abort(.badRequest, reason: "ID invalide")
+        }
+        guard let foyer = try await Foyer.find(id, on: req.db) else {
+            throw Abort(.notFound, reason: "Foyer introuvable")
+        }
+        try await verifierAcces(foyerId: id, userId: payload.id, on: req.db)
+        
+        let dto = try req.content.decode(UpdateFoyerDTO.self)
+        let nom = dto.nom?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !nom.isEmpty else {
+            throw Abort(.badRequest, reason: "Le nom du foyer ne peut pas être vide")
+        }
+        guard nom.count <= 30 else {
+            throw Abort(.badRequest, reason: "Le nom du foyer ne peut pas dépasser 30 caractères")
+        }
+        
+        foyer.nom = nom
+        try await foyer.save(on: req.db)
+        return MessageDTO(message: "Foyer renommé")
+    }
+    
+    // L'utilisateur doit être membre du foyer, ou gestionnaire d'un de ses membres
+    private func verifierAcces(foyerId: UUID, userId: UUID, on db: any Database) async throws {
+        let aAcces = try await Membre.query(on: db)
+            .filter(\.$foyer.$id == foyerId)
+            .group(.or) { group in
+                group.filter(\.$user.$id == userId)
+                group.filter(\.$gestionnaire.$id == userId)
+            }
+            .first() != nil
+        guard aAcces else {
+            throw Abort(.forbidden, reason: "Vous n'avez pas accès à ce foyer.")
+        }
     }
     
 }

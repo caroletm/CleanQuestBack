@@ -320,6 +320,42 @@ struct TacheController: RouteCollection {
     }
 
  
+    // Nom ou catégorie modifiés : le nom proposé dans « Nouvelle tâche » suit la tâche.
+    // Les templates partagés (foyer_id NULL) ne sont jamais modifiés ni supprimés.
+    private func synchroniserTemplate(foyerId: UUID, ancienNom: String, ancienneCategorieId: UUID, tache: Tache, on db: any Database) async throws {
+        let nouveauNom = tache.nom
+        let nouvelleCategorieId = tache.$categorie.id
+        guard nouveauNom != ancienNom || nouvelleCategorieId != ancienneCategorieId else { return }
+
+        // 1 - Crée le template « nouveau nom + nouvelle catégorie » s'il n'existe ni dans le foyer ni en partagé
+        let existeDeja = try await TacheTemplate.query(on: db)
+            .filter(\.$nom == nouveauNom)
+            .filter(\.$categorie.$id == nouvelleCategorieId)
+            .group(.or) { group in
+                group.filter(\.$foyer.$id == nil)
+                group.filter(\.$foyer.$id == foyerId)
+            }
+            .first() != nil
+        if !existeDeja {
+            let nouveauTemplate = TacheTemplate(nom: nouveauNom, categorieId: nouvelleCategorieId, foyerId: foyerId)
+            try await nouveauTemplate.save(on: db)
+        }
+
+        // 2 - Supprime l'ancien template du foyer, seulement si plus aucune tâche du foyer ne l'utilise
+        let encoreUtilise = try await Tache.query(on: db)
+            .filter(\.$foyer.$id == foyerId)
+            .filter(\.$nom == ancienNom)
+            .filter(\.$categorie.$id == ancienneCategorieId)
+            .first() != nil
+        if !encoreUtilise {
+            try await TacheTemplate.query(on: db)
+                .filter(\.$foyer.$id == foyerId)
+                .filter(\.$nom == ancienNom)
+                .filter(\.$categorie.$id == ancienneCategorieId)
+                .delete()
+        }
+    }
+
     // PATCH /taches/:foyerId/:tacheId — modifie les champs de la tâche ; un changement de fréquence régénère les occurrences futures
     @Sendable
     func updateTache(_ req: Request) async throws -> TacheResponseDTO {
@@ -338,6 +374,8 @@ struct TacheController: RouteCollection {
 
         let dto = try req.content.decode(TacheUpdateDTO.self)
         let ancienneFrequence = tache.frequence
+        let ancienNom = tache.nom
+        let ancienneCategorieId = tache.$categorie.id
 
         if let nom = dto.nom {
             let nomTrim = nom.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -371,6 +409,12 @@ struct TacheController: RouteCollection {
 
         try await req.db.transaction { db in
             try await tache.save(on: db)
+
+            try await synchroniserTemplate(foyerId: foyerId,
+                                           ancienNom: ancienNom,
+                                           ancienneCategorieId: ancienneCategorieId,
+                                           tache: tache,
+                                           on: db)
 
             guard frequenceChangee else { return }
 
