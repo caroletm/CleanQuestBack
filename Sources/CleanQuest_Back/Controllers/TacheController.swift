@@ -107,7 +107,11 @@ struct TacheController: RouteCollection {
 
         try await prolongerFenetre(foyerId: foyerId, on: req.db)
 
-        let occurences = try await OccurenceTache.query(on: req.db)
+        return try await occurencesDuFoyer(foyerId, on: req.db)
+    }
+
+    private func occurencesDuFoyer(_ foyerId: UUID, on db: any Database) async throws -> [OccurenceTacheDTO] {
+        let occurences = try await OccurenceTache.query(on: db)
             .join(Tache.self, on: \OccurenceTache.$tache.$id == \Tache.$id)
             .filter(Tache.self, \.$foyer.$id == foyerId)
             .with(\.$tache) { $0.with(\.$icone); $0.with(\.$categorie) }
@@ -135,6 +139,22 @@ struct TacheController: RouteCollection {
                 aFaireValider: tache.aFaireValider
             )
         }
+    }
+
+    private func membresDuFoyer(_ foyerId: UUID, on db: any Database) async throws -> [MembreDTO] {
+        let membres = try await Membre.query(on: db)
+            .filter(\.$foyer.$id == foyerId)
+            .all()
+
+        return membres.map { $0.toDTO() }
+    }
+
+    // Occurrences + membres à jour, renvoyés par les routes de validation : évite deux GET côté app
+    private func etatDuFoyer(_ foyerId: UUID, on db: any Database) async throws -> EtatFoyerDTO {
+        EtatFoyerDTO(
+            occurences: try await occurencesDuFoyer(foyerId, on: db),
+            membres: try await membresDuFoyer(foyerId, on: db)
+        )
     }
 
     
@@ -463,7 +483,7 @@ struct TacheController: RouteCollection {
 
     // POST /taches/occurences/valider-simple/:foyerId/:occurenceId — valide une occurrence de tâche simple (sans étape de validation par un tiers)
     @Sendable
-    func validerTacheSimple(_ req: Request) async throws -> OccurenceTacheDTO {
+    func validerTacheSimple(_ req: Request) async throws -> EtatFoyerDTO {
         let payload = try req.auth.require(UserPayload.self)
         let foyerId = try await foyerAutorise(req, userId: payload.id)
 
@@ -516,31 +536,12 @@ struct TacheController: RouteCollection {
             try await realisateur.save(on: db)
         }
 
-        let tache = occurence.tache
-        return OccurenceTacheDTO(
-            id: occurence.id,
-            datePlanifiee: occurence.datePlanifiee,
-            dateRealisee: occurence.dateRealisee,
-            dateValidee: occurence.dateValidee,
-            statut: occurence.statut,
-            realisateur_id: occurence.$realisateur.id,
-            validateur_id: occurence.$validateur.id,
-            tache_id: try tache.requireID(),
-            tache_nom: tache.nom,
-            icone_nomFichier: tache.icone.nomFichier,
-            categorie_id: tache.$categorie.id,
-            categorie_nom: tache.categorie.nom,
-            frequence: tache.frequence,
-            duree: tache.duree,
-            difficulte: tache.difficulte,
-            points: tache.points,
-            aFaireValider: tache.aFaireValider
-        )
+        return try await etatDuFoyer(foyerId, on: req.db)
     }
 
     // POST /taches/occurences/declarer-realisee/:foyerId/:occurenceId — déclare qu'une tâche à valider a été réalisée (statut en attente de validation par un tiers)
     @Sendable
-    func declarerTacheRealisee(_ req: Request) async throws -> OccurenceTacheDTO {
+    func declarerTacheRealisee(_ req: Request) async throws -> EtatFoyerDTO {
         let payload = try req.auth.require(UserPayload.self)
         let foyerId = try await foyerAutorise(req, userId: payload.id)
 
@@ -588,31 +589,12 @@ struct TacheController: RouteCollection {
                 on: req)
         }
 
-        let tache = occurence.tache
-        return OccurenceTacheDTO(
-            id: occurence.id,
-            datePlanifiee: occurence.datePlanifiee,
-            dateRealisee: occurence.dateRealisee,
-            dateValidee: occurence.dateValidee,
-            statut: occurence.statut,
-            realisateur_id: occurence.$realisateur.id,
-            validateur_id: occurence.$validateur.id,
-            tache_id: try tache.requireID(),
-            tache_nom: tache.nom,
-            icone_nomFichier: tache.icone.nomFichier,
-            categorie_id: tache.$categorie.id,
-            categorie_nom: tache.categorie.nom,
-            frequence: tache.frequence,
-            duree: tache.duree,
-            difficulte: tache.difficulte,
-            points: tache.points,
-            aFaireValider: tache.aFaireValider
-        )
+        return try await etatDuFoyer(foyerId, on: req.db)
     }
     
     // POST /taches/occurences/valider/:foyerId/:occurenceId — valide une occurrence de tâche "à faire valider" (validation par un autre membre du foyer)
     @Sendable
-    func validerTache(_ req: Request) async throws -> OccurenceTacheDTO {
+    func validerTache(_ req: Request) async throws -> EtatFoyerDTO {
         let payload = try req.auth.require(UserPayload.self)
         let foyerId = try await foyerAutorise(req, userId: payload.id)
 
@@ -676,30 +658,11 @@ struct TacheController: RouteCollection {
                 on: req)
         }
 
-        let tache = occurence.tache
-        return OccurenceTacheDTO(
-            id: occurence.id,
-            datePlanifiee: occurence.datePlanifiee,
-            dateRealisee: occurence.dateRealisee,
-            dateValidee: occurence.dateValidee,
-            statut: occurence.statut,
-            realisateur_id: occurence.$realisateur.id,
-            validateur_id: occurence.$validateur.id,
-            tache_id: try tache.requireID(),
-            tache_nom: tache.nom,
-            icone_nomFichier: tache.icone.nomFichier,
-            categorie_id: tache.$categorie.id,
-            categorie_nom: tache.categorie.nom,
-            frequence: tache.frequence,
-            duree: tache.duree,
-            difficulte: tache.difficulte,
-            points: tache.points,
-            aFaireValider: tache.aFaireValider
-        )
+        return try await etatDuFoyer(foyerId, on: req.db)
     }
     
     // POST /taches/occurences/refuser/:foyerId/:occurenceId — refuse la validation : la tâche est marquée "non validée"
-    func refuserTache(_ req: Request) async throws -> OccurenceTacheDTO {
+    func refuserTache(_ req: Request) async throws -> EtatFoyerDTO {
         let payload = try req.auth.require(UserPayload.self)
         let foyerId = try await foyerAutorise(req, userId: payload.id)
 
@@ -738,26 +701,7 @@ struct TacheController: RouteCollection {
                 on: req)
         }
 
-        let tache = occurence.tache
-        return OccurenceTacheDTO(
-            id: occurence.id,
-            datePlanifiee: occurence.datePlanifiee,
-            dateRealisee: occurence.dateRealisee,
-            dateValidee: occurence.dateValidee,
-            statut: occurence.statut,
-            realisateur_id: occurence.$realisateur.id,
-            validateur_id: occurence.$validateur.id,
-            tache_id: try tache.requireID(),
-            tache_nom: tache.nom,
-            icone_nomFichier: tache.icone.nomFichier,
-            categorie_id: tache.$categorie.id,
-            categorie_nom: tache.categorie.nom,
-            frequence: tache.frequence,
-            duree: tache.duree,
-            difficulte: tache.difficulte,
-            points: tache.points,
-            aFaireValider: tache.aFaireValider
-        )
+        return try await etatDuFoyer(foyerId, on: req.db)
     }
 
     // DELETE /taches/:foyerId/:tacheId — supprime la tâche et toutes ses occurrences

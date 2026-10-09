@@ -47,7 +47,7 @@ struct RecompenseController: RouteCollection {
     
     // POST /recompenses/:foyerId/:recompenseId
     @Sendable
-    func acheterRecompense(_ req: Request) async throws -> UtilisationRecompenseResponseDTO {
+    func acheterRecompense(_ req: Request) async throws -> EtatRecompensesDTO {
         let payload = try req.auth.require(UserPayload.self)
         let foyerId = try await foyerAutorise(req, userId: payload.id)
         let dto = try req.content.decode(UtilisationRecompenseCreateDTO.self)
@@ -110,18 +110,20 @@ struct RecompenseController: RouteCollection {
             categorie_id: recompense.$categorie.id,
             categorie_nom: recompense.categorie.nom)
         
-        return UtilisationRecompenseResponseDTO(
+        let utilisationDTO = UtilisationRecompenseResponseDTO(
             id: utilisationRecompense.id,
             statutRecompense: utilisationRecompense.statutRecompense,
             dateAchat: utilisationRecompense.dateAchat,
             proprietaire_id: utilisationRecompense.$proprietaire.id,
             recompense: recompenseDTO,
             cagnotteProprietaire: acheteur.cagnotte)
+
+        return try await etatRecompenses(utilisationDTO, de: acheteur, foyerId: foyerId, on: req.db)
     }
     
     // POST /recompenses/utiliser/:foyerId/:utilisationId — active une carte du portefeuille
     @Sendable
-    func utiliserRecompense(_ req: Request) async throws -> UtilisationRecompenseResponseDTO {
+    func utiliserRecompense(_ req: Request) async throws -> EtatRecompensesDTO {
         let payload = try req.auth.require(UserPayload.self)
         let foyerId = try await foyerAutorise(req, userId: payload.id)
         
@@ -155,23 +157,24 @@ struct RecompenseController: RouteCollection {
         
         try await utilisation.save(on: req.db)
         
-        return utilisation.toResponseDTO(cagnotteProprietaire: proprietaire.cagnotte)
+        let utilisationDTO = utilisation.toResponseDTO(cagnotteProprietaire: proprietaire.cagnotte)
+        return try await etatRecompenses(utilisationDTO, de: proprietaire, foyerId: foyerId, on: req.db)
     }
     
     // POST /recompenses/valider/:foyerId/:utilisationId
     @Sendable
-    func validerUtilisation(_ req: Request) async throws -> UtilisationRecompenseResponseDTO {
+    func validerUtilisation(_ req: Request) async throws -> EtatRecompensesDTO {
         try await cloturerUtilisation(req, statut: .validee)
     }
     
     // POST /recompenses/refuser/:foyerId/:utilisationId
     @Sendable
-    func refuserUtilisation(_ req: Request) async throws -> UtilisationRecompenseResponseDTO {
+    func refuserUtilisation(_ req: Request) async throws -> EtatRecompensesDTO {
         try await cloturerUtilisation(req, statut: .nonValidee)
     }
     
     // Fin de vie d'une carte : .enCours / .attribuee -> .validee ou .nonValidee
-    private func cloturerUtilisation(_ req: Request, statut: StatutRecompense) async throws -> UtilisationRecompenseResponseDTO {
+    private func cloturerUtilisation(_ req: Request, statut: StatutRecompense) async throws -> EtatRecompensesDTO {
         let payload = try req.auth.require(UserPayload.self)
         let foyerId = try await foyerAutorise(req, userId: payload.id)
         
@@ -229,12 +232,13 @@ struct RecompenseController: RouteCollection {
                 on: req)
         }
         
-        return utilisation.toResponseDTO(cagnotteProprietaire: proprietaire.cagnotte)
+        let utilisationDTO = utilisation.toResponseDTO(cagnotteProprietaire: proprietaire.cagnotte)
+        return try await etatRecompenses(utilisationDTO, de: proprietaire, foyerId: foyerId, on: req.db)
     }
     
     // POST /recompenses/attribuer/:foyerId/:utilisationId — donne une carte action à un membre
     @Sendable
-    func attribuerRecompense(_ req: Request) async throws -> UtilisationRecompenseResponseDTO {
+    func attribuerRecompense(_ req: Request) async throws -> EtatRecompensesDTO {
         let payload = try req.auth.require(UserPayload.self)
         let foyerId = try await foyerAutorise(req, userId: payload.id)
         let dto = try req.content.decode(AttributionRecompenseDTO.self)
@@ -296,26 +300,27 @@ struct RecompenseController: RouteCollection {
                 on: req)
         }
 
-        return utilisation.toResponseDTO(cagnotteProprietaire: proprietaire.cagnotte)
+        let utilisationDTO = utilisation.toResponseDTO(cagnotteProprietaire: proprietaire.cagnotte)
+        return try await etatRecompenses(utilisationDTO, de: proprietaire, foyerId: foyerId, on: req.db)
     }
     
 
     // POST /recompenses/accepter/:foyerId/:utilisationId — le destinataire s'engage
     @Sendable
-    func accepterMission(_ req: Request) async throws -> UtilisationRecompenseResponseDTO {
+    func accepterMission(_ req: Request) async throws -> EtatRecompensesDTO {
         try await repondreMission(req, accepte: true)
     }
 
     // POST /recompenses/decliner/:foyerId/:utilisationId — le destinataire refuse la mission
     @Sendable
-    func declinerMission(_ req: Request) async throws -> UtilisationRecompenseResponseDTO {
+    func declinerMission(_ req: Request) async throws -> EtatRecompensesDTO {
         try await repondreMission(req, accepte: false)
     }
 
     // Réponse du DESTINATAIRE à une mission reçue.
     // À ne pas confondre avec cloturerUtilisation, qui est la décision du PROPRIÉTAIRE
     // une fois la deadline passée : autorisation inversée, et statuts de départ différents.
-    private func repondreMission(_ req: Request, accepte: Bool) async throws -> UtilisationRecompenseResponseDTO {
+    private func repondreMission(_ req: Request, accepte: Bool) async throws -> EtatRecompensesDTO {
         let payload = try req.auth.require(UserPayload.self)
         let foyerId = try await foyerAutorise(req, userId: payload.id)
 
@@ -375,7 +380,8 @@ struct RecompenseController: RouteCollection {
                 on: req)
         }
 
-        return utilisation.toResponseDTO(cagnotteProprietaire: utilisation.proprietaire.cagnotte)
+        let utilisationDTO = utilisation.toResponseDTO(cagnotteProprietaire: utilisation.proprietaire.cagnotte)
+        return try await etatRecompenses(utilisationDTO, de: destinataire, foyerId: foyerId, on: req.db)
     }
 
     
@@ -388,11 +394,28 @@ struct RecompenseController: RouteCollection {
         let membre = try await membreConsultable(req, foyerId: foyerId, userId: payload.id,
                                                  raison: "Vous ne pouvez consulter que vos récompenses ou celles du membre que vous gérez")
 
-        return TableauRecompensesDTO(
-            achetees: try await cartesAchetees(de: membre, on: req.db),
-            missions: try await missions(de: membre, on: req.db),
-            enCours: try await cartesEnCours(foyerId: foyerId, on: req.db),
-            nombreUtilisees: try await nombreUtilisees(foyerId: foyerId, on: req.db)
+        return try await tableau(de: membre, foyerId: foyerId, on: req.db)
+    }
+
+    private func tableau(de membre: Membre, foyerId: UUID, on db: any Database) async throws -> TableauRecompensesDTO {
+        TableauRecompensesDTO(
+            achetees: try await cartesAchetees(de: membre, on: db),
+            missions: try await missions(de: membre, on: db),
+            enCours: try await cartesEnCours(foyerId: foyerId, on: db),
+            nombreUtilisees: try await nombreUtilisees(foyerId: foyerId, on: db)
+        )
+    }
+
+    // Carte modifiée + tableau du membre + membres à jour, renvoyés par les routes d'action : évite deux GET côté app
+    private func etatRecompenses(_ utilisation: UtilisationRecompenseResponseDTO, de membre: Membre, foyerId: UUID, on db: any Database) async throws -> EtatRecompensesDTO {
+        let membres = try await Membre.query(on: db)
+            .filter(\.$foyer.$id == foyerId)
+            .all()
+
+        return EtatRecompensesDTO(
+            utilisation: utilisation,
+            tableau: try await tableau(de: membre, foyerId: foyerId, on: db),
+            membres: membres.map { $0.toDTO() }
         )
     }
 

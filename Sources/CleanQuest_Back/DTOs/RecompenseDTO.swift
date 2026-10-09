@@ -47,3 +47,9 @@ struct TableauRecompensesDTO : Content {
     var enCours : [UtilisationRecompenseResponseDTO]
     var nombreUtilisees : Int
 }
+
+struct EtatRecompensesDTO : Content {
+    var utilisation : UtilisationRecompenseResponseDTO
+    var tableau : TableauRecompensesDTO
+    var membres : [MembreDTO]
+}

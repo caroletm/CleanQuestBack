@@ -38,8 +38,6 @@ struct UpdateMembreDTO : Content {
     var nom : String?
     var couleur : String?
     var avatar : String?
-    var cagnotte : Double?
-    var niveau : Niveau?
 }
 
 struct MembreJoinDTO : Content {

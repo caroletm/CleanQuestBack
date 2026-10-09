@@ -25,6 +25,11 @@ struct CatalogueTachesDTO: Content {
     var templates: [TacheTemplateDTO]
 }
 
+struct EtatFoyerDTO: Content {
+    var occurences: [OccurenceTacheDTO]
+    var membres: [MembreDTO]
+}
+
 struct TacheCreateDTO: Content {
     var id: UUID
     var nom: String

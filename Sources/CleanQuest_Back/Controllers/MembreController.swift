@@ -16,6 +16,43 @@ struct MembreController: RouteCollection {
         protected.post("join", use: joinFoyer)
         protected.get("foyer", ":foyerId", use: getMembresByFoyer)
         protected.post("foyer", ":foyerId", use: addMembreToFoyer)
+        protected.patch(":foyerId", ":membreId", use: updateMembre)
+    }
+
+    // PATCH /membres/:foyerId/:membreId — modifie le pseudo, la couleur et l'avatar d'un membre
+    @Sendable
+    func updateMembre(_ req: Request) async throws -> [MembreDTO] {
+        let payload = try req.auth.require(UserPayload.self)
+
+        guard let foyerId = req.parameters.get("foyerId", as: UUID.self),
+              let membreId = req.parameters.get("membreId", as: UUID.self) else {
+            throw Abort(.badRequest, reason: "foyerId ou membreId manquant ou invalide.")
+        }
+        let dto = try req.content.decode(UpdateMembreDTO.self)
+
+        // On ne modifie que son propre membre, ou un membre que l'on gère
+        guard let membre = try await Membre.find(membreId, on: req.db),
+              membre.$foyer.id == foyerId,
+              membre.$user.id == payload.id || membre.$gestionnaire.id == payload.id else {
+            throw Abort(.forbidden, reason: "Vous ne pouvez modifier que votre profil ou celui d'un membre que vous gérez.")
+        }
+
+        if let nom = dto.nom {
+            let nomNettoye = nom.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !nomNettoye.isEmpty else {
+                throw Abort(.badRequest, reason: "Le pseudo est obligatoire.")
+            }
+            membre.nom = nomNettoye
+        }
+        if let couleur = dto.couleur { membre.couleur = couleur }
+        if let avatar = dto.avatar { membre.avatar = avatar }
+
+        try await membre.save(on: req.db)
+
+        let membres = try await Membre.query(on: req.db)
+            .filter(\.$foyer.$id == foyerId)
+            .all()
+        return membres.map { $0.toDTO() }
     }
     
     // POST /membres/join

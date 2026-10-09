@@ -51,3 +51,23 @@ final class Membre : Model, Content, @unchecked Sendable {
         self.estSupprime = false
     }
 }
+
+extension Membre {
+    func toDTO() -> MembreDTO {
+        MembreDTO(
+            id: id,
+            estGere: estGere,
+            dateEntree: dateEntree,
+            nom: nom,
+            email: email,
+            couleur: couleur,
+            avatar: avatar,
+            cagnotte: cagnotte,
+            niveau: niveau,
+            userId: $user.id,
+            gestionnaireId: $gestionnaire.id,
+            foyerId: $foyer.id,
+            estSupprime: estSupprime
+        )
+    }
+}
