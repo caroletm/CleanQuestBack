@@ -14,9 +14,8 @@ struct TacheController: RouteCollection {
         let protected = taches.grouped(JWTMiddleware())
 
         protected.post("categorie", ":foyerId", use: createCategorieTache)
-        protected.get("categories", ":foyerId", use: getCategories)
         protected.get("icones", use: getIcones)
-        protected.get("templates", ":foyerId", use: getTemplates)
+        protected.get("catalogue", ":foyerId", use: getCatalogue)
         protected.get("occurences", ":foyerId", use: getOccurences)
         protected.post(":foyerId", use: createTache)
         protected.patch(":foyerId", ":tacheId", use: updateTache)
@@ -138,21 +137,27 @@ struct TacheController: RouteCollection {
         }
     }
 
-    // GET /taches/templates/:foyerId — liste les templates globaux + ceux du foyer, filtrable par ?categorie_id=
+    
+    // GET /taches/catalogue/:foyerId — catégories + noms proposés en un seul appel (« Nouvelle tâche »)
     @Sendable
-    func getTemplates(_ req: Request) async throws -> [TacheTemplateDTO] {
+    func getCatalogue(_ req: Request) async throws -> CatalogueTachesDTO {
         let payload = try req.auth.require(UserPayload.self)
         let foyerId = try await foyerAutorise(req, userId: payload.id)
-
-        var query = TacheTemplate.query(on: req.db)
+        
+        return CatalogueTachesDTO(
+            categories: try await categoriesDuFoyer(foyerId, on: req.db),
+            templates: try await templatesDuFoyer(foyerId, on: req.db)
+        )
+    }
+    
+    // Les templates partagés (foyer_id NULL) + ceux du foyer
+    private func templatesDuFoyer(_ foyerId: UUID, on db: any Database) async throws -> [TacheTemplateDTO] {
+        let templates = try await TacheTemplate.query(on: db)
             .group(.or) { group in
                 group.filter(\.$foyer.$id == nil)
                 group.filter(\.$foyer.$id == foyerId)
             }
-        if let categorieId = req.query[UUID.self, at: "categorie_id"] {
-            query = query.filter(\.$categorie.$id == categorieId)
-        }
-        let templates = try await query.all()
+            .all()
         return templates.map {
             TacheTemplateDTO(
                 id: $0.id,
@@ -160,6 +165,19 @@ struct TacheController: RouteCollection {
                 categorie_id: $0.$categorie.id,
                 foyer_id: $0.$foyer.id
             )
+        }
+    }
+    
+    // Les catégories partagées (foyer_id NULL) + celles du foyer
+    private func categoriesDuFoyer(_ foyerId: UUID, on db: any Database) async throws -> [CategorieTacheDTO] {
+        let categories = try await CategorieTache.query(on: db)
+            .group(.or) { group in
+                group.filter(\.$foyer.$id == nil)
+                group.filter(\.$foyer.$id == foyerId)
+            }
+            .all()
+        return categories.map {
+            CategorieTacheDTO(id: $0.id, nom: $0.nom, foyer_id: $0.$foyer.id)
         }
     }
 
@@ -180,24 +198,6 @@ struct TacheController: RouteCollection {
             nom: categorieTache.nom,
             foyer_id: categorieTache.$foyer.id
         )
-    }
-
-    // GET /taches/categories/:foyerId — liste les catégories globales + celles du foyer
-    @Sendable
-    func getCategories(_ req: Request) async throws -> [CategorieTacheDTO] {
-        let payload = try req.auth.require(UserPayload.self)
-        let foyerId = try await foyerAutorise(req, userId: payload.id)
-
-        let categories = try await CategorieTache.query(on: req.db)
-            .group(.or) { group in
-                group.filter(\.$foyer.$id == nil)
-                group.filter(\.$foyer.$id == foyerId)
-            }
-            .all()
-
-        return categories.map {
-            CategorieTacheDTO(id: $0.id, nom: $0.nom, foyer_id: $0.$foyer.id)
-        }
     }
 
     // GET /taches/icones — liste toutes les icônes disponibles

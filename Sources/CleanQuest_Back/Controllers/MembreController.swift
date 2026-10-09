@@ -16,7 +16,6 @@ struct MembreController: RouteCollection {
         protected.post("join", use: joinFoyer)
         protected.get("foyer", ":foyerId", use: getMembresByFoyer)
         protected.post("foyer", ":foyerId", use: addMembreToFoyer)
-        protected.get("geres", ":foyerId", use: getMembresGeres)
     }
     
     // POST /membres/join
@@ -188,45 +187,6 @@ struct MembreController: RouteCollection {
         // Récupérer tous les membres de ce foyer
         let membres = try await Membre.query(on: req.db)
             .filter(\.$foyer.$id == foyerId)
-            .all()
-
-        return membres.map { membre in
-            MembreDTO(
-                id: membre.id,
-                estGere: membre.estGere,
-                dateEntree: membre.dateEntree,
-                nom: membre.nom,
-                email: membre.email,
-                couleur: membre.couleur,
-                avatar: membre.avatar,
-                cagnotte: membre.cagnotte,
-                niveau: membre.niveau,
-                userId: membre.$user.id,
-                gestionnaireId: membre.$gestionnaire.id,
-                foyerId: membre.$foyer.id,
-                estSupprime: membre.estSupprime
-            )
-        }
-    }
-
-    //GET /membres/geres/:foyerId
-    @Sendable
-    func getMembresGeres(_ req: Request) async throws -> [MembreDTO] {
-        let payload = try req.auth.require(UserPayload.self)
-        let userId = payload.id
-
-        guard let foyerId = req.parameters.get("foyerId", as: UUID.self) else {
-            throw Abort(.badRequest, reason: "foyerId manquant ou invalide.")
-        }
-
-        // Les membres de ce foyer gérés par l'utilisateur connecté + son propre membre
-        // (un membre qui a rejoint le foyer n'a pas de gestionnaire, il faut donc aussi chercher par user).
-        let membres = try await Membre.query(on: req.db)
-            .filter(\.$foyer.$id == foyerId)
-            .group(.or) { group in
-                group.filter(\.$gestionnaire.$id == userId)
-                group.filter(\.$user.$id == userId)
-            }
             .all()
 
         return membres.map { membre in

@@ -20,6 +20,11 @@ struct TacheTemplateDTO: Content {
     var foyer_id: UUID?
 }
 
+struct CatalogueTachesDTO: Content {
+    var categories: [CategorieTacheDTO]
+    var templates: [TacheTemplateDTO]
+}
+
 struct TacheCreateDTO: Content {
     var id: UUID
     var nom: String

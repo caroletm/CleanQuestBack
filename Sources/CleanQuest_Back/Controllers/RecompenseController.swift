@@ -15,16 +15,12 @@ struct RecompenseController: RouteCollection {
         
         protected.get(use: getRecompenses)
         protected.post("acheter",":foyerId", ":recompenseId",use: acheterRecompense)
-        protected.get("mes-recompenses",":foyerId", ":membreId", use: getRecompensesAchetes)
         protected.post("utiliser", ":foyerId", ":utilisationId", use: utiliserRecompense)
         protected.post("valider", ":foyerId", ":utilisationId", use: validerUtilisation)
         protected.post("refuser", ":foyerId", ":utilisationId", use: refuserUtilisation)
         protected.post("attribuer", ":foyerId", ":utilisationId", use: attribuerRecompense)
-        protected.get("mes-missions", ":foyerId", ":membreId", use: getMesMissions)
-        protected.get("en-cours", ":foyerId", use: getRecompensesEnCours)
         protected.post("accepter", ":foyerId", ":utilisationId", use: accepterMission)
         protected.post("decliner", ":foyerId", ":utilisationId", use: declinerMission)
-        protected.get("utilisees", ":foyerId", use: getRecompensesUtilisees)
         protected.get("tableau", ":foyerId", ":membreId", use: getTableauRecompenses)
     }
     
@@ -48,16 +44,6 @@ struct RecompenseController: RouteCollection {
         }
     }
     
-    // GET /recompenses/mes-recompenses/:foyerId/:membreId — portefeuille d'un membre
-    @Sendable
-    func getRecompensesAchetes(_ req: Request) async throws -> [UtilisationRecompenseResponseDTO] {
-        let payload = try req.auth.require(UserPayload.self)
-        let foyerId = try await foyerAutorise(req, userId: payload.id)
-        
-        let membre = try await membreConsultable(req, foyerId: foyerId, userId: payload.id,
-                                                 raison: "Vous ne pouvez consulter que vos récompenses ou celles du membre que vous gérez")
-        return try await cartesAchetees(de: membre, on: req.db)
-    }
     
     // POST /recompenses/:foyerId/:recompenseId
     @Sendable
@@ -313,16 +299,6 @@ struct RecompenseController: RouteCollection {
         return utilisation.toResponseDTO(cagnotteProprietaire: proprietaire.cagnotte)
     }
     
-    // GET /recompenses/mes-missions/:foyerId/:membreId — les cartes action qu'on m'a confiées
-    @Sendable
-    func getMesMissions(_ req: Request) async throws -> [UtilisationRecompenseResponseDTO] {
-        let payload = try req.auth.require(UserPayload.self)
-        let foyerId = try await foyerAutorise(req, userId: payload.id)
-
-        let membre = try await membreConsultable(req, foyerId: foyerId, userId: payload.id,
-                                                 raison: "Vous ne pouvez consulter que vos missions ou celles du membre que vous gérez")
-        return try await missions(de: membre, on: req.db)
-    }
 
     // POST /recompenses/accepter/:foyerId/:utilisationId — le destinataire s'engage
     @Sendable
@@ -402,35 +378,7 @@ struct RecompenseController: RouteCollection {
         return utilisation.toResponseDTO(cagnotteProprietaire: utilisation.proprietaire.cagnotte)
     }
 
-    // GET /recompenses/en-cours/:foyerId — tout ce qui tourne dans le foyer,
-    // tous membres confondus : c'est le fil d'activité du carrousel.
-    @Sendable
-    func getRecompensesEnCours(_ req: Request) async throws -> [UtilisationRecompenseResponseDTO] {
-        let payload = try req.auth.require(UserPayload.self)
-        let foyerId = try await foyerAutorise(req, userId: payload.id)
-
-        return try await cartesEnCours(foyerId: foyerId, on: req.db)
-    }
     
-    // GET /recompenses/utilisees/:foyerId — tout ce qui tourne dans le foyer,
-    // tous membres confondus : c'est le fil d'activité du carrousel.
-    @Sendable
-    func getRecompensesUtilisees(_ req: Request) async throws -> [UtilisationRecompenseResponseDTO] {
-        let payload = try req.auth.require(UserPayload.self)
-        let foyerId = try await foyerAutorise(req, userId: payload.id)
-        
-        let membreIds = try await membreIdsDuFoyer(foyerId, on: req.db)
-        guard !membreIds.isEmpty else { return [] }
-
-        let utilisations = try await UtilisationRecompense.query(on: req.db)
-            .filter(\.$proprietaire.$id ~~ membreIds)
-            .filter(\.$statutRecompense ~~ [.validee, .nonValidee] )
-            .with(\.$proprietaire)
-            .with(\.$recompense) { recompense in
-                recompense.with(\.$categorie)
-            }.all()
-        return utilisations.map {$0.toResponseDTO(cagnotteProprietaire: $0.proprietaire.cagnotte)}
-    }
 
     // GET /recompenses/tableau/:foyerId/:membreId — tout l'onglet Récompenses en un seul appel
     @Sendable
@@ -448,7 +396,7 @@ struct RecompenseController: RouteCollection {
         )
     }
 
-    //MARK: - REQUETES PARTAGEES (anciennes routes + tableau)
+    //MARK: - REQUETES DU TABLEAU
 
     // Le membre de la route, s'il appartient au foyer et que l'utilisateur est lui-même ou son gestionnaire
     private func membreConsultable(_ req: Request, foyerId: UUID, userId: UUID, raison: String) async throws -> Membre {
